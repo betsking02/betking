@@ -9,17 +9,18 @@
     "seed": "node database/seed.js"
   },
   "dependencies": {
-    "express": "^4.21.2",
+    "axios": "^1.7.9",
+    "bcryptjs": "^2.4.3",
     "better-sqlite3": "^11.7.0",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
-    "jsonwebtoken": "^9.0.2",
-    "bcryptjs": "^2.4.3",
-    "socket.io": "^4.8.1",
+    "express": "^4.21.2",
     "joi": "^17.13.3",
-    "uuid": "^10.0.0",
-    "axios": "^1.7.9",
+    "jsonwebtoken": "^9.0.2",
     "node-cron": "^3.0.3",
+    "nodemailer": "^8.0.1",
+    "socket.io": "^4.8.1",
+    "uuid": "^10.0.0",
     "winston": "^3.17.0"
   },
   "devDependencies": {

@@ -14,7 +14,10 @@ function initDatabase() {
       avatar_url      TEXT DEFAULT '',
       created_at      TEXT DEFAULT (datetime('now')),
       updated_at      TEXT DEFAULT (datetime('now')),
-      last_login      TEXT
+      last_login      TEXT,
+      is_verified     INTEGER DEFAULT 0,
+      verification_code TEXT,
+      verification_expires TEXT
     );
 
     CREATE TABLE IF NOT EXISTS sports (
@@ -132,6 +135,20 @@ function initDatabase() {
     CREATE INDEX IF NOT EXISTS idx_matches_status ON matches(status);
     CREATE INDEX IF NOT EXISTS idx_odds_match_id ON odds(match_id);
   `);
+
+  // Migration: add verification columns if they don't exist
+  const cols = db.prepare("PRAGMA table_info(users)").all().map(c => c.name);
+  if (!cols.includes('is_verified')) {
+    db.exec("ALTER TABLE users ADD COLUMN is_verified INTEGER DEFAULT 0");
+  }
+  if (!cols.includes('verification_code')) {
+    db.exec("ALTER TABLE users ADD COLUMN verification_code TEXT");
+  }
+  if (!cols.includes('verification_expires')) {
+    db.exec("ALTER TABLE users ADD COLUMN verification_expires TEXT");
+  }
+  // Mark existing users as verified so they aren't locked out
+  db.prepare("UPDATE users SET is_verified = 1 WHERE is_verified = 0 AND verification_code IS NULL").run();
 
   console.log('Database initialized successfully');
 }

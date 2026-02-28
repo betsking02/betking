@@ -6,6 +6,7 @@ const db = require('../config/database');
 const { signToken } = require('../utils/jwt');
 const { authenticate } = require('../middleware/auth');
 const Joi = require('joi');
+const { generateCode, sendVerificationEmail } = require('../services/emailService');
 
 const registerSchema = Joi.object({
   username: Joi.string().alphanum().min(3).max(20).required(),
@@ -19,8 +20,8 @@ const loginSchema = Joi.object({
   password: Joi.string().required()
 });
 
-// Register
-router.post('/register', (req, res, next) => {
+// Register - creates account + sends verification code
+router.post('/register', async (req, res, next) => {
   try {
     const { error, value } = registerSchema.validate(req.body);
     if (error) return res.status(400).json({ error: error.details[0].message });
@@ -32,18 +33,85 @@ router.post('/register', (req, res, next) => {
     const passwordHash = bcrypt.hashSync(password, 10);
     const defaultBalance = parseFloat(db.prepare("SELECT value FROM app_settings WHERE key = 'default_balance'").get()?.value || '10000');
 
+    // Generate verification code (6 digits, expires in 10 minutes)
+    const code = generateCode();
+    const expires = new Date(Date.now() + 10 * 60 * 1000).toISOString();
+
     const result = db.prepare(
-      'INSERT INTO users (username, email, password_hash, display_name, role, balance) VALUES (?, ?, ?, ?, ?, ?)'
-    ).run(username, email, passwordHash, display_name || username, 'user', defaultBalance);
+      "INSERT INTO users (username, email, password_hash, display_name, role, balance, is_verified, verification_code, verification_expires) VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?)"
+    ).run(username, email, passwordHash, display_name || username, 'user', defaultBalance, code, expires);
 
-    const user = db.prepare('SELECT id, username, role, balance, display_name FROM users WHERE id = ?').get(result.lastInsertRowid);
-    const token = signToken({ userId: user.id, username: user.username, role: user.role });
+    // Send verification email
+    const sent = await sendVerificationEmail(email, code);
 
-    res.status(201).json({ token, user });
+    res.status(201).json({
+      message: 'Account created. Please check your email for the verification code.',
+      requiresVerification: true,
+      email: email,
+      emailSent: sent,
+      userId: result.lastInsertRowid
+    });
   } catch (err) { next(err); }
 });
 
-// Login
+// Verify email with code
+router.post('/verify', (req, res, next) => {
+  try {
+    const { email, code } = req.body;
+    if (!email || !code) return res.status(400).json({ error: 'Email and code are required' });
+
+    const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    if (user.is_verified) return res.status(400).json({ error: 'Email is already verified' });
+
+    // Check code
+    if (user.verification_code !== code) {
+      return res.status(400).json({ error: 'Invalid verification code' });
+    }
+
+    // Check expiry
+    if (new Date(user.verification_expires) < new Date()) {
+      return res.status(400).json({ error: 'Verification code has expired. Please request a new one.' });
+    }
+
+    // Mark as verified
+    db.prepare("UPDATE users SET is_verified = 1, verification_code = NULL, verification_expires = NULL WHERE id = ?").run(user.id);
+    db.prepare("UPDATE users SET last_login = datetime('now') WHERE id = ?").run(user.id);
+
+    // Auto-login after verification
+    const token = signToken({ userId: user.id, username: user.username, role: user.role });
+    res.json({
+      message: 'Email verified successfully!',
+      token,
+      user: { id: user.id, username: user.username, role: user.role, balance: user.balance, display_name: user.display_name }
+    });
+  } catch (err) { next(err); }
+});
+
+// Resend verification code
+router.post('/resend-code', async (req, res, next) => {
+  try {
+    const { email } = req.body;
+    if (!email) return res.status(400).json({ error: 'Email is required' });
+
+    const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    if (user.is_verified) return res.status(400).json({ error: 'Email is already verified' });
+
+    // Generate new code
+    const code = generateCode();
+    const expires = new Date(Date.now() + 10 * 60 * 1000).toISOString();
+
+    db.prepare("UPDATE users SET verification_code = ?, verification_expires = ? WHERE id = ?").run(code, expires, user.id);
+
+    const sent = await sendVerificationEmail(user.email, code);
+    if (!sent) return res.status(500).json({ error: 'Failed to send email. Please try again.' });
+
+    res.json({ message: 'New verification code sent to your email.' });
+  } catch (err) { next(err); }
+});
+
+// Login - checks if verified
 router.post('/login', (req, res, next) => {
   try {
     const { error, value } = loginSchema.validate(req.body);
@@ -57,6 +125,15 @@ router.post('/login', (req, res, next) => {
       return res.status(401).json({ error: 'Invalid username or password' });
     }
 
+    // Check if email is verified (skip for demo and admin accounts)
+    if (!user.is_verified && user.role === 'user') {
+      return res.status(403).json({
+        error: 'Please verify your email before logging in.',
+        requiresVerification: true,
+        email: user.email
+      });
+    }
+
     db.prepare("UPDATE users SET last_login = datetime('now') WHERE id = ?").run(user.id);
     const token = signToken({ userId: user.id, username: user.username, role: user.role }, user.role === 'demo');
 
@@ -67,7 +144,7 @@ router.post('/login', (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-// Demo Login
+// Demo Login (no verification needed)
 router.post('/demo-login', (req, res, next) => {
   try {
     const demoId = crypto.randomBytes(4).toString('hex');
@@ -76,7 +153,7 @@ router.post('/demo-login', (req, res, next) => {
     const defaultBalance = parseFloat(db.prepare("SELECT value FROM app_settings WHERE key = 'default_balance'").get()?.value || '10000');
 
     const result = db.prepare(
-      'INSERT INTO users (username, password_hash, display_name, role, balance, is_demo) VALUES (?, ?, ?, ?, ?, ?)'
+      'INSERT INTO users (username, password_hash, display_name, role, balance, is_demo, is_verified) VALUES (?, ?, ?, ?, ?, ?, 1)'
     ).run(username, passwordHash, 'Demo User', 'demo', defaultBalance, 1);
 
     const user = { id: result.lastInsertRowid, username, role: 'demo', balance: defaultBalance, display_name: 'Demo User', is_demo: 1 };
@@ -111,7 +188,6 @@ router.get('/dashboard', authenticate, (req, res) => {
     SELECT * FROM transactions WHERE user_id = ? ORDER BY created_at DESC LIMIT 10
   `).all(userId);
 
-  // Game breakdown
   const gameBreakdown = db.prepare(`
     SELECT game_type, COUNT(*) as count, COALESCE(SUM(stake), 0) as wagered, COALESCE(SUM(actual_payout), 0) as won
     FROM bets WHERE user_id = ? GROUP BY game_type

@@ -1,10 +1,12 @@
 import { useState, useContext } from 'react';
 import { AuthContext } from '../context/AuthContext';
+import * as authApi from '../api/auth';
 
 export default function LoginPage() {
-  const { loginUser, registerUser, demoLogin } = useContext(AuthContext);
-  const [view, setView] = useState('login'); // 'login' | 'register'
+  const { loginUser, demoLogin, saveAuth } = useContext(AuthContext);
+  const [view, setView] = useState('login'); // 'login' | 'register' | 'verify'
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
   const [loading, setLoading] = useState(false);
 
   // Login form
@@ -14,6 +16,10 @@ export default function LoginPage() {
   // Register form
   const [regForm, setRegForm] = useState({ username: '', email: '', password: '', confirmPassword: '' });
 
+  // Verification
+  const [verifyEmail, setVerifyEmail] = useState('');
+  const [verifyCode, setVerifyCode] = useState('');
+
   const handleLogin = async (e) => {
     e.preventDefault();
     setError('');
@@ -21,7 +27,16 @@ export default function LoginPage() {
     try {
       await loginUser(username, password);
     } catch (err) {
-      setError(err.response?.data?.error || 'Login failed');
+      const data = err.response?.data;
+      // If user needs verification, switch to verify view
+      if (data?.requiresVerification) {
+        setVerifyEmail(data.email);
+        setView('verify');
+        setError('');
+        setSuccess('Please verify your email to continue.');
+      } else {
+        setError(data?.error || 'Login failed');
+      }
     } finally {
       setLoading(false);
     }
@@ -36,9 +51,46 @@ export default function LoginPage() {
     }
     setLoading(true);
     try {
-      await registerUser({ username: regForm.username, email: regForm.email, password: regForm.password });
+      const res = await authApi.register({ username: regForm.username, email: regForm.email, password: regForm.password });
+      const data = res.data;
+      if (data.requiresVerification) {
+        setVerifyEmail(data.email);
+        setView('verify');
+        setError('');
+        setSuccess('Account created! Check your email for the verification code.');
+      }
     } catch (err) {
       setError(err.response?.data?.error || 'Registration failed');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleVerify = async (e) => {
+    e.preventDefault();
+    setError('');
+    setSuccess('');
+    setLoading(true);
+    try {
+      const res = await authApi.verifyEmail({ email: verifyEmail, code: verifyCode });
+      // Auto-login after verification
+      saveAuth(res.data);
+    } catch (err) {
+      setError(err.response?.data?.error || 'Verification failed');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleResendCode = async () => {
+    setError('');
+    setSuccess('');
+    setLoading(true);
+    try {
+      const res = await authApi.resendCode({ email: verifyEmail });
+      setSuccess(res.data.message);
+    } catch (err) {
+      setError(err.response?.data?.error || 'Failed to resend code');
     } finally {
       setLoading(false);
     }
@@ -61,11 +113,11 @@ export default function LoginPage() {
   const switchView = (v) => {
     setView(v);
     setError('');
+    setSuccess('');
   };
 
   return (
     <div style={styles.page}>
-      {/* Animated background */}
       <div style={styles.bgOverlay} />
 
       <div style={styles.container}>
@@ -81,138 +133,199 @@ export default function LoginPage() {
 
         {/* Auth Card */}
         <div style={styles.card}>
-          {/* Tab Buttons */}
-          <div style={styles.tabs}>
-            <button
-              style={{ ...styles.tab, ...(view === 'login' ? styles.tabActive : {}) }}
-              onClick={() => switchView('login')}
-            >
-              Login
-            </button>
-            <button
-              style={{ ...styles.tab, ...(view === 'register' ? styles.tabActive : {}) }}
-              onClick={() => switchView('register')}
-            >
-              Register
-            </button>
-          </div>
 
-          {error && <div style={styles.error}>{error}</div>}
+          {/* Verification View */}
+          {view === 'verify' && (
+            <>
+              <div style={styles.verifyHeader}>
+                <div style={styles.verifyIcon}>&#9993;</div>
+                <h2 style={styles.verifyTitle}>Verify Your Email</h2>
+                <p style={styles.verifySubtitle}>
+                  We sent a 6-digit code to<br />
+                  <strong style={{ color: '#fff' }}>{verifyEmail}</strong>
+                </p>
+              </div>
 
-          {/* Login Form */}
-          {view === 'login' && (
-            <form onSubmit={handleLogin}>
-              <div style={styles.field}>
-                <label style={styles.label}>Username</label>
-                <input
-                  style={styles.input}
-                  value={username}
-                  onChange={e => setUsername(e.target.value)}
-                  placeholder="Enter your username"
-                  required
-                />
+              {error && <div style={styles.error}>{error}</div>}
+              {success && <div style={styles.success}>{success}</div>}
+
+              <form onSubmit={handleVerify}>
+                <div style={styles.field}>
+                  <label style={styles.label}>Verification Code</label>
+                  <input
+                    style={{ ...styles.input, ...styles.codeInput }}
+                    value={verifyCode}
+                    onChange={e => setVerifyCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                    placeholder="Enter 6-digit code"
+                    maxLength={6}
+                    required
+                  />
+                </div>
+                <button style={styles.btnPrimary} type="submit" disabled={loading || verifyCode.length !== 6}>
+                  {loading ? 'Verifying...' : 'Verify Email'}
+                </button>
+              </form>
+
+              <div style={{ textAlign: 'center', marginTop: '16px' }}>
+                <p style={{ color: '#7a8a9e', fontSize: '13px', marginBottom: '8px' }}>
+                  Didn't receive the code?
+                </p>
+                <button
+                  style={styles.linkBtn}
+                  onClick={handleResendCode}
+                  disabled={loading}
+                >
+                  Resend Code
+                </button>
+                <span style={{ color: '#2a3a4a', margin: '0 8px' }}>|</span>
+                <button
+                  style={styles.linkBtn}
+                  onClick={() => switchView('login')}
+                >
+                  Back to Login
+                </button>
               </div>
-              <div style={styles.field}>
-                <label style={styles.label}>Password</label>
-                <input
-                  style={styles.input}
-                  type="password"
-                  value={password}
-                  onChange={e => setPassword(e.target.value)}
-                  placeholder="Enter your password"
-                  required
-                />
-              </div>
-              <button style={styles.btnPrimary} type="submit" disabled={loading}>
-                {loading ? 'Logging in...' : 'Login'}
-              </button>
-            </form>
+            </>
           )}
 
-          {/* Register Form */}
-          {view === 'register' && (
-            <form onSubmit={handleRegister}>
-              <div style={styles.field}>
-                <label style={styles.label}>Username</label>
-                <input
-                  style={styles.input}
-                  value={regForm.username}
-                  onChange={updateReg('username')}
-                  placeholder="Choose a username"
-                  required
-                />
+          {/* Login & Register Views */}
+          {view !== 'verify' && (
+            <>
+              {/* Tab Buttons */}
+              <div style={styles.tabs}>
+                <button
+                  style={{ ...styles.tab, ...(view === 'login' ? styles.tabActive : {}) }}
+                  onClick={() => switchView('login')}
+                >
+                  Login
+                </button>
+                <button
+                  style={{ ...styles.tab, ...(view === 'register' ? styles.tabActive : {}) }}
+                  onClick={() => switchView('register')}
+                >
+                  Register
+                </button>
               </div>
-              <div style={styles.field}>
-                <label style={styles.label}>Email</label>
-                <input
-                  style={styles.input}
-                  type="email"
-                  value={regForm.email}
-                  onChange={updateReg('email')}
-                  placeholder="Enter your email"
-                  required
-                />
+
+              {error && <div style={styles.error}>{error}</div>}
+              {success && <div style={styles.success}>{success}</div>}
+
+              {/* Login Form */}
+              {view === 'login' && (
+                <form onSubmit={handleLogin}>
+                  <div style={styles.field}>
+                    <label style={styles.label}>Username</label>
+                    <input
+                      style={styles.input}
+                      value={username}
+                      onChange={e => setUsername(e.target.value)}
+                      placeholder="Enter your username"
+                      required
+                    />
+                  </div>
+                  <div style={styles.field}>
+                    <label style={styles.label}>Password</label>
+                    <input
+                      style={styles.input}
+                      type="password"
+                      value={password}
+                      onChange={e => setPassword(e.target.value)}
+                      placeholder="Enter your password"
+                      required
+                    />
+                  </div>
+                  <button style={styles.btnPrimary} type="submit" disabled={loading}>
+                    {loading ? 'Logging in...' : 'Login'}
+                  </button>
+                </form>
+              )}
+
+              {/* Register Form */}
+              {view === 'register' && (
+                <form onSubmit={handleRegister}>
+                  <div style={styles.field}>
+                    <label style={styles.label}>Username</label>
+                    <input
+                      style={styles.input}
+                      value={regForm.username}
+                      onChange={updateReg('username')}
+                      placeholder="Choose a username"
+                      required
+                    />
+                  </div>
+                  <div style={styles.field}>
+                    <label style={styles.label}>Email</label>
+                    <input
+                      style={styles.input}
+                      type="email"
+                      value={regForm.email}
+                      onChange={updateReg('email')}
+                      placeholder="Enter your email"
+                      required
+                    />
+                  </div>
+                  <div style={styles.field}>
+                    <label style={styles.label}>Password</label>
+                    <input
+                      style={styles.input}
+                      type="password"
+                      value={regForm.password}
+                      onChange={updateReg('password')}
+                      placeholder="Min 6 characters"
+                      required
+                    />
+                  </div>
+                  <div style={styles.field}>
+                    <label style={styles.label}>Confirm Password</label>
+                    <input
+                      style={styles.input}
+                      type="password"
+                      value={regForm.confirmPassword}
+                      onChange={updateReg('confirmPassword')}
+                      placeholder="Repeat password"
+                      required
+                    />
+                  </div>
+                  <button style={styles.btnPrimary} type="submit" disabled={loading}>
+                    {loading ? 'Creating Account...' : 'Create Account'}
+                  </button>
+                </form>
+              )}
+
+              {/* Divider */}
+              <div style={styles.divider}>
+                <span style={styles.dividerLine} />
+                <span style={styles.dividerText}>OR</span>
+                <span style={styles.dividerLine} />
               </div>
-              <div style={styles.field}>
-                <label style={styles.label}>Password</label>
-                <input
-                  style={styles.input}
-                  type="password"
-                  value={regForm.password}
-                  onChange={updateReg('password')}
-                  placeholder="Min 6 characters"
-                  required
-                />
-              </div>
-              <div style={styles.field}>
-                <label style={styles.label}>Confirm Password</label>
-                <input
-                  style={styles.input}
-                  type="password"
-                  value={regForm.confirmPassword}
-                  onChange={updateReg('confirmPassword')}
-                  placeholder="Repeat password"
-                  required
-                />
-              </div>
-              <button style={styles.btnPrimary} type="submit" disabled={loading}>
-                {loading ? 'Creating Account...' : 'Create Account'}
+
+              {/* Demo Login */}
+              <button style={styles.btnDemo} onClick={handleDemo} disabled={loading}>
+                {loading ? 'Loading...' : 'Try Demo (No Sign Up)'}
               </button>
-            </form>
+              <p style={styles.demoHint}>Get 10,000 virtual coins instantly</p>
+
+              {/* Features */}
+              <div style={styles.features}>
+                <div style={styles.feature}>
+                  <span style={styles.featureIcon}>&#9917;</span>
+                  <span>Sports Betting</span>
+                </div>
+                <div style={styles.feature}>
+                  <span style={styles.featureIcon}>&#127920;</span>
+                  <span>Casino Games</span>
+                </div>
+                <div style={styles.feature}>
+                  <span style={styles.featureIcon}>&#128640;</span>
+                  <span>Crash Game</span>
+                </div>
+                <div style={styles.feature}>
+                  <span style={styles.featureIcon}>&#127183;</span>
+                  <span>Blackjack</span>
+                </div>
+              </div>
+            </>
           )}
-
-          {/* Divider */}
-          <div style={styles.divider}>
-            <span style={styles.dividerLine} />
-            <span style={styles.dividerText}>OR</span>
-            <span style={styles.dividerLine} />
-          </div>
-
-          {/* Demo Login */}
-          <button style={styles.btnDemo} onClick={handleDemo} disabled={loading}>
-            {loading ? 'Loading...' : 'Try Demo (No Sign Up)'}
-          </button>
-          <p style={styles.demoHint}>Get 10,000 virtual coins instantly</p>
-
-          {/* Features */}
-          <div style={styles.features}>
-            <div style={styles.feature}>
-              <span style={styles.featureIcon}>&#9917;</span>
-              <span>Sports Betting</span>
-            </div>
-            <div style={styles.feature}>
-              <span style={styles.featureIcon}>&#127920;</span>
-              <span>Casino Games</span>
-            </div>
-            <div style={styles.feature}>
-              <span style={styles.featureIcon}>&#128640;</span>
-              <span>Crash Game</span>
-            </div>
-            <div style={styles.feature}>
-              <span style={styles.featureIcon}>&#127183;</span>
-              <span>Blackjack</span>
-            </div>
-          </div>
         </div>
 
         <p style={styles.disclaimer}>
@@ -323,6 +436,15 @@ const styles = {
     fontSize: '13px',
     marginBottom: '16px',
   },
+  success: {
+    background: 'rgba(0,231,1,0.1)',
+    border: '1px solid rgba(0,231,1,0.3)',
+    color: '#00e701',
+    padding: '10px 14px',
+    borderRadius: '8px',
+    fontSize: '13px',
+    marginBottom: '16px',
+  },
   field: {
     marginBottom: '14px',
   },
@@ -346,6 +468,13 @@ const styles = {
     transition: 'border-color 0.2s',
     outline: 'none',
     boxSizing: 'border-box',
+  },
+  codeInput: {
+    textAlign: 'center',
+    fontSize: '24px',
+    letterSpacing: '8px',
+    fontWeight: '700',
+    padding: '16px 14px',
   },
   btnPrimary: {
     width: '100%',
@@ -412,6 +541,33 @@ const styles = {
   },
   featureIcon: {
     fontSize: '18px',
+  },
+  linkBtn: {
+    background: 'none',
+    border: 'none',
+    color: '#1da1f2',
+    fontSize: '13px',
+    cursor: 'pointer',
+    fontWeight: '600',
+  },
+  verifyHeader: {
+    textAlign: 'center',
+    marginBottom: '20px',
+  },
+  verifyIcon: {
+    fontSize: '48px',
+    marginBottom: '12px',
+  },
+  verifyTitle: {
+    fontSize: '20px',
+    fontWeight: '700',
+    color: '#fff',
+    marginBottom: '8px',
+  },
+  verifySubtitle: {
+    color: '#b1bad3',
+    fontSize: '14px',
+    lineHeight: '1.5',
   },
   disclaimer: {
     textAlign: 'center',
