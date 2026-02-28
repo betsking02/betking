@@ -4,8 +4,11 @@ let transporter = null;
 
 function getTransporter() {
   if (!transporter && process.env.GMAIL_USER && process.env.GMAIL_APP_PASSWORD) {
+    console.log(`[EMAIL] Creating transporter for ${process.env.GMAIL_USER}`);
     transporter = nodemailer.createTransport({
-      service: 'gmail',
+      host: 'smtp.gmail.com',
+      port: 587,
+      secure: false,
       auth: {
         user: process.env.GMAIL_USER,
         pass: process.env.GMAIL_APP_PASSWORD,
@@ -20,9 +23,12 @@ function generateCode() {
 }
 
 async function sendVerificationEmail(email, code) {
+  console.log(`[EMAIL] Attempting to send verification to ${email}`);
+  console.log(`[EMAIL] GMAIL_USER set: ${!!process.env.GMAIL_USER}, GMAIL_APP_PASSWORD set: ${!!process.env.GMAIL_APP_PASSWORD}`);
+
   const t = getTransporter();
   if (!t) {
-    console.warn('Gmail credentials not configured - email not sent');
+    console.error('[EMAIL] No transporter - credentials missing');
     return { sent: false, error: 'Email service not configured' };
   }
 
@@ -52,13 +58,31 @@ async function sendVerificationEmail(email, code) {
   };
 
   try {
-    await t.sendMail(mailOptions);
-    console.log(`Verification email sent to ${email}`);
+    const info = await t.sendMail(mailOptions);
+    console.log(`[EMAIL] SUCCESS - sent to ${email}, messageId: ${info.messageId}`);
     return { sent: true };
   } catch (err) {
-    console.error('Email send failed:', err.message);
+    console.error(`[EMAIL] FAILED - ${err.code || ''} ${err.message}`);
+    console.error(`[EMAIL] Full error:`, err);
+    // Reset transporter so it's recreated on next attempt (in case credentials changed)
+    transporter = null;
     return { sent: false, error: err.message };
   }
 }
 
-module.exports = { generateCode, sendVerificationEmail };
+// Test function to verify email config works
+async function testEmailConfig() {
+  const t = getTransporter();
+  if (!t) {
+    return { ok: false, error: 'Credentials not set (GMAIL_USER or GMAIL_APP_PASSWORD missing)' };
+  }
+  try {
+    await t.verify();
+    return { ok: true, user: process.env.GMAIL_USER };
+  } catch (err) {
+    transporter = null;
+    return { ok: false, error: err.message, code: err.code };
+  }
+}
+
+module.exports = { generateCode, sendVerificationEmail, testEmailConfig };

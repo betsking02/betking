@@ -44,6 +44,13 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', name: 'BetKing API', version: '1.0.0' });
 });
 
+// Email config test endpoint
+app.get('/api/test-email', async (req, res) => {
+  const { testEmailConfig } = require('./services/emailService');
+  const result = await testEmailConfig();
+  res.json(result);
+});
+
 // Serve static files in production
 if (isProduction) {
   app.use(express.static(path.join(__dirname, '..', 'client', 'dist')));

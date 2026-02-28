@@ -44,23 +44,14 @@ router.post('/register', async (req, res, next) => {
     // Send verification email
     const emailResult = await sendVerificationEmail(email, code);
 
-    const response = {
+    res.status(201).json({
       message: emailResult.sent
-        ? 'Account created. Please check your email for the verification code.'
-        : 'Account created. Email could not be sent - use the code shown below.',
+        ? 'Account created! Please check your email for the verification code.'
+        : 'Account created but email could not be sent. Please contact admin or try again.',
       requiresVerification: true,
       email: email,
       emailSent: emailResult.sent,
-      userId: result.lastInsertRowid
-    };
-
-    // If email failed, send the code directly so user can still verify
-    if (!emailResult.sent) {
-      response.code = code;
-      response.emailError = emailResult.error;
-    }
-
-    res.status(201).json(response);
+    });
   } catch (err) { next(err); }
 });
 
@@ -119,7 +110,7 @@ router.post('/resend-code', async (req, res, next) => {
     if (emailResult.sent) {
       res.json({ message: 'New verification code sent to your email.' });
     } else {
-      res.json({ message: 'Email could not be sent. Use the code shown below.', code, emailError: emailResult.error });
+      res.status(500).json({ error: 'Email could not be sent. Please try again or contact admin.' });
     }
   } catch (err) { next(err); }
 });
