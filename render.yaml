@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: betking-demo
+    runtime: node
+    buildCommand: npm run render:build
+    startCommand: NODE_ENV=production node server/index.js
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: JWT_SECRET
+        value: betking-demo-jwt-secret-2024
+      - key: DEFAULT_BALANCE
+        value: "10000"
+      - key: MAX_BET
+        value: "50000"

@@ -1,0 +1,106 @@
+.header {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: var(--header-height);
+  background: var(--bg-header);
+  border-bottom: 1px solid var(--border-color);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 1rem;
+  z-index: 100;
+}
+.logo {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  text-decoration: none;
+}
+.logo-icon { font-size: 1.5rem; }
+.logo-text {
+  font-size: 1.25rem;
+  font-weight: 800;
+  color: var(--accent-gold);
+  letter-spacing: 1px;
+}
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+.balance-display {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  padding: 4px 12px;
+  background: var(--bg-tertiary);
+  border-radius: var(--radius);
+  text-decoration: none;
+  color: inherit;
+}
+.balance-label {
+  font-size: 0.65rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+}
+.balance-amount {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--accent-green);
+  font-family: var(--font-mono);
+}
+.user-menu { position: relative; }
+.user-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--accent-blue);
+  color: #fff;
+  font-weight: 700;
+  font-size: 0.9rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.user-dropdown {
+  display: none;
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius);
+  min-width: 180px;
+  overflow: hidden;
+  box-shadow: var(--shadow);
+  z-index: 200;
+}
+.user-menu:hover .user-dropdown { display: block; }
+.dropdown-header {
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--border-color);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.dropdown-item {
+  display: block;
+  padding: 0.6rem 1rem;
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+  transition: background 0.15s;
+  background: none;
+  width: 100%;
+  text-align: left;
+  text-decoration: none;
+}
+.dropdown-item:hover { background: var(--bg-tertiary); color: var(--text-primary); }
+.dropdown-logout { color: var(--accent-red); }
+
+@media (max-width: 768px) {
+  .header { padding: 0 0.5rem; }
+  .balance-display { padding: 2px 8px; }
+  .balance-label { display: none; }
+}

@@ -1,0 +1,28 @@
+.mobile-nav {
+  display: none;
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: var(--bg-header);
+  border-top: 1px solid var(--border-color);
+  z-index: 100;
+  padding: 0.25rem 0;
+}
+.mobile-nav-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 0.4rem 0;
+  color: var(--text-muted);
+  font-size: 0.65rem;
+  text-decoration: none;
+  flex: 1;
+}
+.mobile-nav-item.active { color: var(--accent-green); }
+.mobile-nav-icon { font-size: 1.2rem; }
+
+@media (max-width: 768px) {
+  .mobile-nav { display: flex; }
+}

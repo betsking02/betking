@@ -1,0 +1,24 @@
+{
+  "name": "betking-demo",
+  "version": "1.0.0",
+  "private": true,
+  "description": "BetKing - Demo Betting & Casino Platform (Virtual Currency Only)",
+  "workspaces": [
+    "client",
+    "server"
+  ],
+  "scripts": {
+    "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
+    "dev:server": "npm run dev --workspace=server",
+    "dev:client": "npm run dev --workspace=client",
+    "build": "npm run build --workspace=client",
+    "start": "node server/index.js",
+    "render:build": "npm install && npm run build --workspace=client && npm run seed --workspace=server"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

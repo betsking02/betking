@@ -1,0 +1,109 @@
+.bet-slip {
+  position: sticky;
+  top: calc(var(--header-height) + 1.5rem);
+  width: 300px;
+  min-width: 300px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.bet-slip-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.75rem 1rem;
+  background: var(--bg-tertiary);
+  border-bottom: 1px solid var(--border-color);
+}
+.bet-slip-header h3 {
+  font-size: 0.9rem;
+}
+.bet-slip-items {
+  max-height: 400px;
+  overflow-y: auto;
+}
+.bet-slip-item {
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--border-color);
+}
+.bet-slip-item-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 0.5rem;
+}
+.bet-slip-selection {
+  font-weight: 600;
+  font-size: 0.85rem;
+}
+.bet-slip-match {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+.bet-slip-remove {
+  background: none;
+  color: var(--text-muted);
+  font-size: 1.2rem;
+  padding: 0 4px;
+  line-height: 1;
+}
+.bet-slip-remove:hover {
+  color: var(--accent-red);
+}
+.bet-slip-item-footer {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.bet-slip-odds {
+  font-size: 0.8rem;
+  color: var(--accent-blue);
+  font-family: var(--font-mono);
+  white-space: nowrap;
+}
+.bet-slip-stake {
+  width: 100px;
+  padding: 6px 8px;
+  font-size: 0.85rem;
+  text-align: right;
+}
+.bet-slip-quick-stakes {
+  display: flex;
+  gap: 0.25rem;
+  margin-top: 0.5rem;
+}
+.bet-slip-quick-stakes .btn {
+  padding: 2px 8px;
+  font-size: 0.65rem;
+}
+.bet-slip-payout {
+  font-size: 0.75rem;
+  margin-top: 0.35rem;
+  color: var(--text-secondary);
+}
+.bet-slip-footer {
+  padding: 0.75rem 1rem;
+  background: var(--bg-tertiary);
+}
+.bet-slip-totals {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.8rem;
+  margin-bottom: 0.75rem;
+}
+
+@media (max-width: 768px) {
+  .bet-slip {
+    position: fixed;
+    bottom: 60px;
+    left: 0;
+    right: 0;
+    width: 100%;
+    min-width: unset;
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+    z-index: 90;
+    max-height: 60vh;
+  }
+}
