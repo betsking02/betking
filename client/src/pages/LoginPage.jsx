@@ -19,6 +19,7 @@ export default function LoginPage() {
   // Verification
   const [verifyEmail, setVerifyEmail] = useState('');
   const [verifyCode, setVerifyCode] = useState('');
+  const [fallbackCode, setFallbackCode] = useState(''); // shown when email fails
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -55,9 +56,13 @@ export default function LoginPage() {
       const data = res.data;
       if (data.requiresVerification) {
         setVerifyEmail(data.email);
+        setFallbackCode(data.code || '');
         setView('verify');
         setError('');
-        setSuccess('Account created! Check your email for the verification code.');
+        setSuccess(data.emailSent
+          ? 'Account created! Check your email for the verification code.'
+          : 'Account created! Email could not be sent. Use the code shown below.'
+        );
       }
     } catch (err) {
       setError(err.response?.data?.error || 'Registration failed');
@@ -88,6 +93,7 @@ export default function LoginPage() {
     setLoading(true);
     try {
       const res = await authApi.resendCode({ email: verifyEmail });
+      setFallbackCode(res.data.code || '');
       setSuccess(res.data.message);
     } catch (err) {
       setError(err.response?.data?.error || 'Failed to resend code');
@@ -148,6 +154,18 @@ export default function LoginPage() {
 
               {error && <div style={styles.error}>{error}</div>}
               {success && <div style={styles.success}>{success}</div>}
+
+              {fallbackCode && (
+                <div style={styles.fallbackCodeBox}>
+                  <p style={{ color: '#ffd700', fontSize: '13px', marginBottom: '8px', fontWeight: 600 }}>
+                    Your verification code:
+                  </p>
+                  <div style={styles.fallbackCode}>{fallbackCode}</div>
+                  <p style={{ color: '#7a8a9e', fontSize: '11px', marginTop: '8px' }}>
+                    Copy this code and enter it below
+                  </p>
+                </div>
+              )}
 
               <form onSubmit={handleVerify}>
                 <div style={styles.field}>
@@ -568,6 +586,21 @@ const styles = {
     color: '#b1bad3',
     fontSize: '14px',
     lineHeight: '1.5',
+  },
+  fallbackCodeBox: {
+    background: 'rgba(255,215,0,0.08)',
+    border: '1px solid rgba(255,215,0,0.3)',
+    borderRadius: '10px',
+    padding: '16px',
+    textAlign: 'center',
+    marginBottom: '16px',
+  },
+  fallbackCode: {
+    fontSize: '28px',
+    fontWeight: '700',
+    letterSpacing: '6px',
+    color: '#00e701',
+    fontFamily: 'monospace',
   },
   disclaimer: {
     textAlign: 'center',

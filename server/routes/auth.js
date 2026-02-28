@@ -41,15 +41,26 @@ router.post('/register', async (req, res, next) => {
       "INSERT INTO users (username, email, password_hash, display_name, role, balance, is_verified, verification_code, verification_expires) VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?)"
     ).run(username, email, passwordHash, display_name || username, 'user', defaultBalance, code, expires);
 
-    // Send verification email in background (don't block the response)
-    sendVerificationEmail(email, code).catch(err => console.error('Email send error:', err));
+    // Send verification email
+    const emailResult = await sendVerificationEmail(email, code);
 
-    res.status(201).json({
-      message: 'Account created. Please check your email for the verification code.',
+    const response = {
+      message: emailResult.sent
+        ? 'Account created. Please check your email for the verification code.'
+        : 'Account created. Email could not be sent - use the code shown below.',
       requiresVerification: true,
       email: email,
+      emailSent: emailResult.sent,
       userId: result.lastInsertRowid
-    });
+    };
+
+    // If email failed, send the code directly so user can still verify
+    if (!emailResult.sent) {
+      response.code = code;
+      response.emailError = emailResult.error;
+    }
+
+    res.status(201).json(response);
   } catch (err) { next(err); }
 });
 
@@ -103,10 +114,13 @@ router.post('/resend-code', async (req, res, next) => {
 
     db.prepare("UPDATE users SET verification_code = ?, verification_expires = ? WHERE id = ?").run(code, expires, user.id);
 
-    const sent = await sendVerificationEmail(user.email, code);
-    if (!sent) return res.status(500).json({ error: 'Failed to send email. Please try again.' });
+    const emailResult = await sendVerificationEmail(user.email, code);
 
-    res.json({ message: 'New verification code sent to your email.' });
+    if (emailResult.sent) {
+      res.json({ message: 'New verification code sent to your email.' });
+    } else {
+      res.json({ message: 'Email could not be sent. Use the code shown below.', code, emailError: emailResult.error });
+    }
   } catch (err) { next(err); }
 });
 

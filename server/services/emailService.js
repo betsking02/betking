@@ -1,21 +1,29 @@
 const nodemailer = require('nodemailer');
 
-const transporter = nodemailer.createTransport({
-  service: 'gmail',
-  auth: {
-    user: process.env.GMAIL_USER,
-    pass: process.env.GMAIL_APP_PASSWORD,
-  },
-});
+let transporter = null;
+
+function getTransporter() {
+  if (!transporter && process.env.GMAIL_USER && process.env.GMAIL_APP_PASSWORD) {
+    transporter = nodemailer.createTransport({
+      service: 'gmail',
+      auth: {
+        user: process.env.GMAIL_USER,
+        pass: process.env.GMAIL_APP_PASSWORD,
+      },
+    });
+  }
+  return transporter;
+}
 
 function generateCode() {
   return Math.floor(100000 + Math.random() * 900000).toString();
 }
 
 async function sendVerificationEmail(email, code) {
-  if (!process.env.GMAIL_USER || !process.env.GMAIL_APP_PASSWORD) {
-    console.warn('Gmail credentials not configured - skipping email send');
-    return false;
+  const t = getTransporter();
+  if (!t) {
+    console.warn('Gmail credentials not configured - email not sent');
+    return { sent: false, error: 'Email service not configured' };
   }
 
   const mailOptions = {
@@ -44,11 +52,12 @@ async function sendVerificationEmail(email, code) {
   };
 
   try {
-    await transporter.sendMail(mailOptions);
-    return true;
+    await t.sendMail(mailOptions);
+    console.log(`Verification email sent to ${email}`);
+    return { sent: true };
   } catch (err) {
-    console.error('Failed to send verification email:', err.message);
-    return false;
+    console.error('Email send failed:', err.message);
+    return { sent: false, error: err.message };
   }
 }
 
