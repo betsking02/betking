@@ -1,4 +1,8 @@
 const nodemailer = require('nodemailer');
+const dns = require('dns');
+
+// Force IPv4 - Render free tier doesn't support IPv6
+dns.setDefaultResultOrder('ipv4first');
 
 let transporter = null;
 
