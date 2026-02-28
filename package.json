@@ -13,12 +13,12 @@
     "dev:client": "npm run dev --workspace=client",
     "build": "npm run build --workspace=client",
     "start": "node server/index.js",
-    "render:build": "npm install && npm run build --workspace=client && npm run seed --workspace=server"
+    "render:build": "npm install && cd client && npm run build && cd ../server && node database/seed.js"
   },
   "devDependencies": {
     "concurrently": "^9.2.1"
   },
   "engines": {
-    "node": ">=18.0.0"
+    "node": "20.x"
   }
 }
