@@ -13,7 +13,7 @@
     "dev:client": "npm run dev --workspace=client",
     "build": "npm run build --workspace=client",
     "start": "node server/index.js",
-    "render:build": "npm install && cd client && npm run build && cd ../server && node database/seed.js"
+    "render:build": "npm install --include=dev && npm run build --workspace=client && cd server && node database/seed.js"
   },
   "devDependencies": {
     "concurrently": "^9.2.1"
