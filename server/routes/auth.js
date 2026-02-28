@@ -41,14 +41,13 @@ router.post('/register', async (req, res, next) => {
       "INSERT INTO users (username, email, password_hash, display_name, role, balance, is_verified, verification_code, verification_expires) VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?)"
     ).run(username, email, passwordHash, display_name || username, 'user', defaultBalance, code, expires);
 
-    // Send verification email
-    const sent = await sendVerificationEmail(email, code);
+    // Send verification email in background (don't block the response)
+    sendVerificationEmail(email, code).catch(err => console.error('Email send error:', err));
 
     res.status(201).json({
       message: 'Account created. Please check your email for the verification code.',
       requiresVerification: true,
       email: email,
-      emailSent: sent,
       userId: result.lastInsertRowid
     });
   } catch (err) { next(err); }

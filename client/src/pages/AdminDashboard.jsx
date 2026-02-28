@@ -12,10 +12,15 @@ export default function AdminDashboard() {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('overview');
   const [search, setSearch] = useState('');
-  const [balanceModal, setBalanceModal] = useState(null); // { user, type: 'add'|'remove' }
+  const [balanceModal, setBalanceModal] = useState(null);
   const [balanceAmount, setBalanceAmount] = useState('');
   const [balanceReason, setBalanceReason] = useState('');
   const [submitting, setSubmitting] = useState(false);
+
+  // New modals
+  const [passwordModal, setPasswordModal] = useState(null); // { user }
+  const [newPassword, setNewPassword] = useState('');
+  const [deleteModal, setDeleteModal] = useState(null); // { user }
 
   useEffect(() => {
     loadData();
@@ -69,13 +74,11 @@ export default function AdminDashboard() {
       });
 
       const newBalance = res.data.user.balance;
-      toast.success(`Balance ${balanceModal.type === 'add' ? 'added' : 'removed'} successfully! New balance: ₹${formatCurrency(newBalance)}`);
+      toast.success(`Balance ${balanceModal.type === 'add' ? 'added' : 'removed'}! New: ${formatCurrency(newBalance)}`);
 
-      // Update user in list
       setUsers(prev => prev.map(u =>
         u.id === balanceModal.user.id ? { ...u, balance: newBalance } : u
       ));
-
       setBalanceModal(null);
       setBalanceAmount('');
       setBalanceReason('');
@@ -83,6 +86,50 @@ export default function AdminDashboard() {
       toast.error(err.response?.data?.error || 'Failed to update balance');
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handlePasswordChange = async () => {
+    if (!passwordModal || !newPassword || newPassword.length < 6) {
+      return toast.error('Password must be at least 6 characters');
+    }
+    setSubmitting(true);
+    try {
+      const res = await api.put(`/admin/users/${passwordModal.user.id}/password`, { newPassword });
+      toast.success(res.data.message);
+      setPasswordModal(null);
+      setNewPassword('');
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Failed to change password');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleDeleteUser = async () => {
+    if (!deleteModal) return;
+    setSubmitting(true);
+    try {
+      const res = await api.delete(`/admin/users/${deleteModal.user.id}`);
+      toast.success(res.data.message);
+      setUsers(prev => prev.filter(u => u.id !== deleteModal.user.id));
+      setDeleteModal(null);
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Failed to delete user');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleToggleVerify = async (u) => {
+    try {
+      const res = await api.put(`/admin/users/${u.id}/verify`, { is_verified: !u.is_verified });
+      toast.success(res.data.message);
+      setUsers(prev => prev.map(usr =>
+        usr.id === u.id ? { ...usr, is_verified: res.data.is_verified } : usr
+      ));
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Failed to update verification');
     }
   };
 
@@ -97,8 +144,6 @@ export default function AdminDashboard() {
   }
 
   if (loading) return <div className="spinner" style={{ margin: '3rem auto' }} />;
-
-  const filteredUsers = users;
 
   return (
     <div className="admin-dashboard">
@@ -212,13 +257,14 @@ export default function AdminDashboard() {
                 <tr>
                   <th>User</th>
                   <th>Role</th>
+                  <th>Status</th>
                   <th>Balance</th>
                   <th>Joined</th>
                   <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {filteredUsers.length > 0 ? filteredUsers.map(u => (
+                {users.length > 0 ? users.map(u => (
                   <tr key={u.id}>
                     <td>
                       <div className="user-cell">
@@ -237,38 +283,63 @@ export default function AdminDashboard() {
                         {u.role.toUpperCase()}
                       </span>
                     </td>
+                    <td>
+                      <button
+                        onClick={() => handleToggleVerify(u)}
+                        style={{
+                          background: u.is_verified ? 'rgba(0,231,1,0.12)' : 'rgba(255,68,68,0.12)',
+                          color: u.is_verified ? '#00e701' : '#ff4444',
+                          border: `1px solid ${u.is_verified ? 'rgba(0,231,1,0.3)' : 'rgba(255,68,68,0.3)'}`,
+                          borderRadius: '6px',
+                          padding: '4px 10px',
+                          fontSize: '0.75rem',
+                          fontWeight: 600,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        {u.is_verified ? 'Verified' : 'Unverified'}
+                      </button>
+                    </td>
                     <td className="balance-cell">₹{formatCurrency(u.balance)}</td>
                     <td className="text-muted text-sm">{u.created_at ? formatDate(u.created_at) : 'N/A'}</td>
                     <td>
-                      <div className="actions-cell">
+                      <div className="actions-cell" style={{ flexWrap: 'wrap' }}>
                         <button
                           className="btn btn-sm"
                           style={{ background: 'rgba(0, 231, 1, 0.15)', color: 'var(--accent-green)', border: '1px solid rgba(0, 231, 1, 0.3)' }}
-                          onClick={() => {
-                            setBalanceModal({ user: u, type: 'add' });
-                            setBalanceAmount('');
-                            setBalanceReason('');
-                          }}
+                          onClick={() => { setBalanceModal({ user: u, type: 'add' }); setBalanceAmount(''); setBalanceReason(''); }}
                         >
                           + Add
                         </button>
                         <button
                           className="btn btn-sm"
-                          style={{ background: 'rgba(255, 68, 68, 0.15)', color: 'var(--accent-red)', border: '1px solid rgba(255, 68, 68, 0.3)' }}
-                          onClick={() => {
-                            setBalanceModal({ user: u, type: 'remove' });
-                            setBalanceAmount('');
-                            setBalanceReason('');
-                          }}
+                          style={{ background: 'rgba(255, 107, 0, 0.15)', color: 'var(--accent-orange)', border: '1px solid rgba(255, 107, 0, 0.3)' }}
+                          onClick={() => { setBalanceModal({ user: u, type: 'remove' }); setBalanceAmount(''); setBalanceReason(''); }}
                         >
                           - Remove
                         </button>
+                        <button
+                          className="btn btn-sm"
+                          style={{ background: 'rgba(29, 161, 242, 0.15)', color: 'var(--accent-blue)', border: '1px solid rgba(29, 161, 242, 0.3)' }}
+                          onClick={() => { setPasswordModal({ user: u }); setNewPassword(''); }}
+                        >
+                          🔑 Password
+                        </button>
+                        {u.role !== 'admin' && (
+                          <button
+                            className="btn btn-sm"
+                            style={{ background: 'rgba(255, 68, 68, 0.15)', color: 'var(--accent-red)', border: '1px solid rgba(255, 68, 68, 0.3)' }}
+                            onClick={() => setDeleteModal({ user: u })}
+                          >
+                            🗑 Delete
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>
                 )) : (
                   <tr>
-                    <td colSpan={5} style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
+                    <td colSpan={6} style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
                       No users found
                     </td>
                   </tr>
@@ -380,6 +451,100 @@ export default function AdminDashboard() {
                 disabled={submitting || !balanceAmount || Number(balanceAmount) <= 0}
               >
                 {submitting ? 'Processing...' : balanceModal.type === 'add' ? 'Add Balance' : 'Remove Balance'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Change Password Modal */}
+      {passwordModal && (
+        <div className="balance-modal-overlay" onClick={() => setPasswordModal(null)}>
+          <div className="balance-modal" onClick={e => e.stopPropagation()}>
+            <h3>🔑 Change Password</h3>
+
+            <div className="modal-user-info">
+              <div className="avatar-sm">
+                {passwordModal.user.username.charAt(0).toUpperCase()}
+              </div>
+              <div>
+                <div className="font-bold">{passwordModal.user.username}</div>
+                <div className="text-muted text-sm">{passwordModal.user.email || 'No email'}</div>
+              </div>
+            </div>
+
+            <label>New Password</label>
+            <input
+              type="text"
+              placeholder="Enter new password (min 6 characters)"
+              value={newPassword}
+              onChange={e => setNewPassword(e.target.value)}
+              autoFocus
+            />
+
+            <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: '0.5rem 0 1rem' }}>
+              The user will need to use this new password to login.
+            </p>
+
+            <div className="modal-actions">
+              <button className="btn btn-secondary" onClick={() => setPasswordModal(null)}>Cancel</button>
+              <button
+                className="btn"
+                style={{ background: 'var(--accent-blue)', color: '#fff' }}
+                onClick={handlePasswordChange}
+                disabled={submitting || newPassword.length < 6}
+              >
+                {submitting ? 'Changing...' : 'Change Password'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete User Modal */}
+      {deleteModal && (
+        <div className="balance-modal-overlay" onClick={() => setDeleteModal(null)}>
+          <div className="balance-modal" onClick={e => e.stopPropagation()}>
+            <h3 style={{ color: 'var(--accent-red)' }}>🗑 Delete User</h3>
+
+            <div className="modal-user-info">
+              <div className="avatar-sm" style={{ background: 'linear-gradient(135deg, var(--accent-red), #cc0000)' }}>
+                {deleteModal.user.username.charAt(0).toUpperCase()}
+              </div>
+              <div>
+                <div className="font-bold">{deleteModal.user.username}</div>
+                <div className="text-muted text-sm">{deleteModal.user.email || 'No email'}</div>
+              </div>
+            </div>
+
+            <div style={{
+              background: 'rgba(255,68,68,0.1)',
+              border: '1px solid rgba(255,68,68,0.3)',
+              borderRadius: '8px',
+              padding: '1rem',
+              margin: '1rem 0',
+              fontSize: '0.85rem',
+              color: '#ff6b6b',
+              lineHeight: '1.5',
+            }}>
+              <strong>Warning:</strong> This will permanently delete this user and all their data including:
+              <ul style={{ marginTop: '0.5rem', paddingLeft: '1.2rem' }}>
+                <li>User account</li>
+                <li>All bet history</li>
+                <li>All transaction history</li>
+              </ul>
+              This action cannot be undone.
+            </div>
+
+            <div className="modal-actions">
+              <button className="btn btn-secondary" onClick={() => setDeleteModal(null)}>Cancel</button>
+              <button
+                className="btn"
+                style={{ background: 'var(--accent-red)', color: '#fff' }}
+                onClick={handleDeleteUser}
+                disabled={submitting}
+              >
+                {submitting ? 'Deleting...' : 'Delete User'}
               </button>
             </div>
           </div>

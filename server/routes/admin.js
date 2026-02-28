@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const bcrypt = require('bcryptjs');
 const db = require('../config/database');
 const { authenticate, adminAuth } = require('../middleware/auth');
 
@@ -39,7 +40,7 @@ router.get('/users', (req, res) => {
   const { page = 1, limit = 20, search } = req.query;
   const offset = (page - 1) * limit;
 
-  let query = 'SELECT id, username, email, display_name, role, balance, is_demo, created_at, last_login FROM users';
+  let query = 'SELECT id, username, email, display_name, role, balance, is_demo, is_verified, created_at, last_login FROM users';
   const params = [];
 
   if (search) {
@@ -226,6 +227,59 @@ router.put('/settings', (req, res) => {
     update.run(key, String(value));
   }
   res.json({ message: 'Settings updated' });
+});
+
+// Delete user
+router.delete('/users/:id', (req, res) => {
+  const userId = parseInt(req.params.id);
+
+  // Prevent deleting yourself
+  if (userId === req.user.id) {
+    return res.status(400).json({ error: 'Cannot delete your own admin account' });
+  }
+
+  const user = db.prepare('SELECT id, username, role FROM users WHERE id = ?').get(userId);
+  if (!user) return res.status(404).json({ error: 'User not found' });
+
+  db.transaction(() => {
+    db.prepare('DELETE FROM transactions WHERE user_id = ?').run(userId);
+    db.prepare('DELETE FROM bets WHERE user_id = ?').run(userId);
+    db.prepare('DELETE FROM users WHERE id = ?').run(userId);
+  })();
+
+  res.json({ message: `User "${user.username}" deleted successfully` });
+});
+
+// Change user password
+router.put('/users/:id/password', (req, res) => {
+  const userId = parseInt(req.params.id);
+  const { newPassword } = req.body;
+
+  if (!newPassword || newPassword.length < 6) {
+    return res.status(400).json({ error: 'Password must be at least 6 characters' });
+  }
+
+  const user = db.prepare('SELECT id, username FROM users WHERE id = ?').get(userId);
+  if (!user) return res.status(404).json({ error: 'User not found' });
+
+  const hash = bcrypt.hashSync(newPassword, 10);
+  db.prepare("UPDATE users SET password_hash = ?, updated_at = datetime('now') WHERE id = ?").run(hash, userId);
+
+  res.json({ message: `Password changed for "${user.username}"` });
+});
+
+// Toggle user verification status
+router.put('/users/:id/verify', (req, res) => {
+  const userId = parseInt(req.params.id);
+  const { is_verified } = req.body;
+
+  const user = db.prepare('SELECT id, username, is_verified FROM users WHERE id = ?').get(userId);
+  if (!user) return res.status(404).json({ error: 'User not found' });
+
+  const newStatus = is_verified !== undefined ? (is_verified ? 1 : 0) : (user.is_verified ? 0 : 1);
+  db.prepare("UPDATE users SET is_verified = ?, updated_at = datetime('now') WHERE id = ?").run(newStatus, userId);
+
+  res.json({ message: `${user.username} is now ${newStatus ? 'verified' : 'unverified'}`, is_verified: newStatus });
 });
 
 module.exports = router;
