@@ -15,7 +15,5 @@ services:
         value: "10000"
       - key: MAX_BET
         value: "50000"
-      - key: GMAIL_USER
-        value: ""
-      - key: GMAIL_APP_PASSWORD
+      - key: RESEND_API_KEY
         value: ""
