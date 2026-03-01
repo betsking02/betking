@@ -68,14 +68,25 @@ async function testEmailConfig() {
   }
 
   try {
-    const res = await fetch('https://api.resend.com/api-keys', {
-      headers: { 'Authorization': `Bearer ${apiKey}` },
+    // Send a test email to Resend's test address to verify the key works
+    const res = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        from: process.env.EMAIL_FROM || 'BetKing <onboarding@resend.dev>',
+        to: ['delivered@resend.dev'],
+        subject: 'BetKing - Email Config Test',
+        html: '<p>Email configuration is working!</p>',
+      }),
     });
-    if (res.ok) {
-      return { ok: true, service: 'Resend' };
-    }
     const data = await res.json();
-    return { ok: false, error: data.message || 'Invalid API key' };
+    if (res.ok) {
+      return { ok: true, service: 'Resend', message: 'Test email sent successfully' };
+    }
+    return { ok: false, error: data.message || 'Email send failed' };
   } catch (err) {
     return { ok: false, error: err.message };
   }
