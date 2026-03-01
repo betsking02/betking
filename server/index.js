@@ -1,18 +1,3 @@
-// Force all DNS lookups to use IPv4 (Render free tier has no IPv6)
-const dns = require('dns');
-const origLookup = dns.lookup;
-dns.lookup = function (hostname, options, callback) {
-  if (typeof options === 'function') {
-    callback = options;
-    options = { family: 4 };
-  } else if (typeof options === 'number') {
-    options = { family: 4 };
-  } else {
-    options = Object.assign({}, options, { family: 4 });
-  }
-  return origLookup.call(this, hostname, options, callback);
-};
-
 require('dotenv').config({ path: require('path').join(__dirname, '.env') });
 const express = require('express');
 const cors = require('cors');

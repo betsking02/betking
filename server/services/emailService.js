@@ -1,17 +1,45 @@
 const nodemailer = require('nodemailer');
+const dns = require('dns');
+const { promisify } = require('util');
+
+const resolve4 = promisify(dns.resolve4);
 
 let transporter = null;
+let gmailIPv4 = null;
 
-function getTransporter() {
-  if (!transporter && process.env.GMAIL_USER && process.env.GMAIL_APP_PASSWORD) {
-    console.log(`[EMAIL] Creating transporter for ${process.env.GMAIL_USER}`);
+async function getGmailIPv4() {
+  if (!gmailIPv4) {
+    try {
+      const addresses = await resolve4('smtp.gmail.com');
+      gmailIPv4 = addresses[0];
+      console.log(`[EMAIL] Resolved smtp.gmail.com to IPv4: ${gmailIPv4}`);
+    } catch (err) {
+      console.error('[EMAIL] Failed to resolve smtp.gmail.com:', err.message);
+      return null;
+    }
+  }
+  return gmailIPv4;
+}
+
+async function getTransporter() {
+  if (!process.env.GMAIL_USER || !process.env.GMAIL_APP_PASSWORD) return null;
+
+  if (!transporter) {
+    const ip = await getGmailIPv4();
+    if (!ip) return null;
+
+    console.log(`[EMAIL] Creating transporter -> ${ip}:465 for ${process.env.GMAIL_USER}`);
     transporter = nodemailer.createTransport({
-      host: 'smtp.gmail.com',
-      port: 587,
-      secure: false,
+      host: ip,
+      port: 465,
+      secure: true,
       auth: {
         user: process.env.GMAIL_USER,
         pass: process.env.GMAIL_APP_PASSWORD,
+      },
+      tls: {
+        servername: 'smtp.gmail.com',
+        rejectUnauthorized: true,
       },
     });
   }
@@ -24,11 +52,10 @@ function generateCode() {
 
 async function sendVerificationEmail(email, code) {
   console.log(`[EMAIL] Attempting to send verification to ${email}`);
-  console.log(`[EMAIL] GMAIL_USER set: ${!!process.env.GMAIL_USER}, GMAIL_APP_PASSWORD set: ${!!process.env.GMAIL_APP_PASSWORD}`);
 
-  const t = getTransporter();
+  const t = await getTransporter();
   if (!t) {
-    console.error('[EMAIL] No transporter - credentials missing');
+    console.error('[EMAIL] No transporter - credentials missing or DNS failed');
     return { sent: false, error: 'Email service not configured' };
   }
 
@@ -63,25 +90,24 @@ async function sendVerificationEmail(email, code) {
     return { sent: true };
   } catch (err) {
     console.error(`[EMAIL] FAILED - ${err.code || ''} ${err.message}`);
-    console.error(`[EMAIL] Full error:`, err);
-    // Reset transporter so it's recreated on next attempt (in case credentials changed)
     transporter = null;
+    gmailIPv4 = null;
     return { sent: false, error: err.message };
   }
 }
 
-// Test function to verify email config works
 async function testEmailConfig() {
-  const t = getTransporter();
+  const t = await getTransporter();
   if (!t) {
-    return { ok: false, error: 'Credentials not set (GMAIL_USER or GMAIL_APP_PASSWORD missing)' };
+    return { ok: false, error: 'Credentials not set or DNS resolution failed' };
   }
   try {
     await t.verify();
-    return { ok: true, user: process.env.GMAIL_USER };
+    return { ok: true, user: process.env.GMAIL_USER, ip: gmailIPv4 };
   } catch (err) {
     transporter = null;
-    return { ok: false, error: err.message, code: err.code };
+    gmailIPv4 = null;
+    return { ok: false, error: err.message, code: err.code, ip: gmailIPv4 };
   }
 }
 
