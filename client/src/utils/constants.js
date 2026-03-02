@@ -21,6 +21,7 @@ export const CASINO_GAMES = [
   { id: 'poker', name: 'Video Poker', icon: '♠️', path: '/casino/poker', color: '#1da1f2', description: 'Jacks or Better' },
   { id: 'crash', name: 'Crash', icon: '📈', path: '/casino/crash', color: '#ff6b00', description: 'Cash out before crash!' },
   { id: 'color', name: 'Color Prediction', icon: '🔴', path: '/casino/color-prediction', color: '#9b59b6', description: 'Predict the color' },
+  { id: 'mines', name: 'Mines', icon: '💣', path: '/casino/mines', color: '#e67e22', description: 'Find gems, avoid mines!' },
 ];
 
 export const BET_AMOUNTS = [100, 500, 1000, 5000, 10000];

@@ -7,6 +7,7 @@ const slots = require('../games/slots');
 const roulette = require('../games/roulette');
 const blackjack = require('../games/blackjack');
 const poker = require('../games/poker');
+const mines = require('../games/mines');
 
 // Helper: process casino bet (deduct stake, return result, credit winnings)
 function processCasinoBet(userId, stake, gameType, selection, gameLogicFn) {
@@ -260,6 +261,139 @@ router.post('/poker/draw', authenticate, (req, res, next) => {
     res.json(result);
   } catch (err) {
     if (err.message.includes('not found') || err.message.includes('Already')) {
+      return res.status(400).json({ error: err.message });
+    }
+    next(err);
+  }
+});
+
+// Mines - Start
+router.post('/mines/start', authenticate, (req, res, next) => {
+  try {
+    const { stake, difficulty } = req.body;
+    if (!stake) return res.status(400).json({ error: 'Stake is required' });
+    if (!difficulty || !mines.DIFFICULTIES[difficulty]) {
+      return res.status(400).json({ error: 'Invalid difficulty (easy/medium/hard)' });
+    }
+
+    const maxBet = parseFloat(db.prepare("SELECT value FROM app_settings WHERE key = 'max_bet'").get()?.value || '50000');
+    const minBet = parseFloat(db.prepare("SELECT value FROM app_settings WHERE key = 'min_bet'").get()?.value || '10');
+    if (stake > maxBet || stake < minBet) return res.status(400).json({ error: `Bet must be between ${minBet} and ${maxBet}` });
+
+    const user = db.prepare('SELECT balance FROM users WHERE id = ?').get(req.user.id);
+    if (user.balance < stake) return res.status(400).json({ error: 'Insufficient balance' });
+
+    // Deduct stake
+    const newBalance = user.balance - stake;
+    db.prepare("UPDATE users SET balance = ?, updated_at = datetime('now') WHERE id = ?").run(newBalance, req.user.id);
+    db.prepare(`
+      INSERT INTO transactions (user_id, type, amount, balance_after, description)
+      VALUES (?, 'bet_placed', ?, ?, 'Mines bet')
+    `).run(req.user.id, -stake, newBalance);
+
+    const game = mines.createGame(req.user.id, stake, difficulty);
+    game.balance = newBalance;
+
+    res.json(game);
+  } catch (err) {
+    if (err.message.includes('balance') || err.message.includes('bet') || err.message.includes('difficulty')) {
+      return res.status(400).json({ error: err.message });
+    }
+    next(err);
+  }
+});
+
+// Mines - Reveal tile
+router.post('/mines/reveal', authenticate, (req, res, next) => {
+  try {
+    const { gameId, tileIndex } = req.body;
+    if (!gameId) return res.status(400).json({ error: 'gameId is required' });
+    if (tileIndex === undefined || tileIndex === null) return res.status(400).json({ error: 'tileIndex is required' });
+
+    const result = mines.revealTile(gameId, tileIndex);
+
+    // If hit a mine, record the lost bet
+    if (result.isMine) {
+      const game = mines.getGame(gameId);
+      const user = db.prepare('SELECT balance FROM users WHERE id = ?').get(req.user.id);
+      db.prepare(`
+        INSERT INTO bets (user_id, game_type, selection, stake, actual_payout, status, game_details, settled_at)
+        VALUES (?, 'mines', ?, ?, 0, 'lost', ?, datetime('now'))
+      `).run(req.user.id, `Mines ${game.difficulty}`, game.stake, JSON.stringify({
+        difficulty: game.difficulty,
+        mineCount: game.mineCount,
+        revealed: game.revealedTiles.length,
+        result: 'mine_hit',
+      }));
+      result.balance = user.balance;
+    } else if (result.allRevealed) {
+      // All safe tiles revealed — auto cashout
+      const game = mines.getGame(gameId);
+      const user = db.prepare('SELECT balance FROM users WHERE id = ?').get(req.user.id);
+      const finalBalance = user.balance + result.payout;
+      db.prepare("UPDATE users SET balance = ?, updated_at = datetime('now') WHERE id = ?").run(finalBalance, req.user.id);
+      db.prepare(`
+        INSERT INTO transactions (user_id, type, amount, balance_after, description)
+        VALUES (?, 'bet_won', ?, ?, ?)
+      `).run(req.user.id, result.payout, finalBalance, `Mines win x${result.multiplier}`);
+      db.prepare(`
+        INSERT INTO bets (user_id, game_type, selection, stake, actual_payout, status, game_details, settled_at)
+        VALUES (?, 'mines', ?, ?, ?, 'won', ?, datetime('now'))
+      `).run(req.user.id, `Mines ${game.difficulty}`, game.stake, result.payout, JSON.stringify({
+        difficulty: game.difficulty,
+        mineCount: game.mineCount,
+        revealed: game.revealedTiles.length,
+        multiplier: result.multiplier,
+        result: 'all_revealed',
+      }));
+      result.balance = finalBalance;
+    }
+
+    res.json(result);
+  } catch (err) {
+    if (err.message.includes('not found') || err.message.includes('not active') || err.message.includes('already') || err.message.includes('Invalid')) {
+      return res.status(400).json({ error: err.message });
+    }
+    next(err);
+  }
+});
+
+// Mines - Cashout
+router.post('/mines/cashout', authenticate, (req, res, next) => {
+  try {
+    const { gameId } = req.body;
+    if (!gameId) return res.status(400).json({ error: 'gameId is required' });
+
+    const game = mines.getGame(gameId);
+    if (!game) return res.status(400).json({ error: 'Game not found or expired' });
+
+    const result = mines.cashout(gameId);
+
+    // Credit winnings
+    const user = db.prepare('SELECT balance FROM users WHERE id = ?').get(req.user.id);
+    const finalBalance = user.balance + result.payout;
+    db.prepare("UPDATE users SET balance = ?, updated_at = datetime('now') WHERE id = ?").run(finalBalance, req.user.id);
+    db.prepare(`
+      INSERT INTO transactions (user_id, type, amount, balance_after, description)
+      VALUES (?, 'bet_won', ?, ?, ?)
+    `).run(req.user.id, result.payout, finalBalance, `Mines win x${result.multiplier}`);
+
+    // Record bet
+    db.prepare(`
+      INSERT INTO bets (user_id, game_type, selection, stake, actual_payout, status, game_details, settled_at)
+      VALUES (?, 'mines', ?, ?, ?, 'won', ?, datetime('now'))
+    `).run(req.user.id, `Mines ${game.difficulty}`, game.stake, result.payout, JSON.stringify({
+      difficulty: game.difficulty,
+      mineCount: game.mineCount,
+      revealed: game.revealedTiles.length,
+      multiplier: result.multiplier,
+      result: 'cashout',
+    }));
+
+    result.balance = finalBalance;
+    res.json(result);
+  } catch (err) {
+    if (err.message.includes('not found') || err.message.includes('not active') || err.message.includes('Must reveal')) {
       return res.status(400).json({ error: err.message });
     }
     next(err);
