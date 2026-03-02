@@ -65,7 +65,7 @@ function PlayingCard({ card, size = 'large', highlight = '', flipping = false })
 
   return (
     <div
-      className={`hilo-card ${flipping ? 'hilo-card-flip' : ''} ${highlight === 'wrong' ? 'hilo-card-wrong' : ''}`}
+      className={`hilo-card ${flipping === 'out' ? 'hilo-card-flip-out' : flipping === 'in' ? 'hilo-card-flip-in' : ''} ${highlight === 'wrong' ? 'hilo-card-wrong' : ''}`}
       style={{
         width: cardWidth,
         height: cardHeight,
@@ -193,19 +193,31 @@ export default function HiLoGamePage() {
   const handleGuess = useCallback(async (direction) => {
     if (!gameActive || gameOver || loading) return;
     setLoading(true);
-    setFlipping(true);
+
+    const previousCard = currentCard;
+
+    // Phase 1: Flip out — hide the current card
+    setFlipping('out');
 
     try {
-      const res = await guessHiLo(gameId, direction);
+      // API call runs in parallel with flip-out animation
+      const [res] = await Promise.all([
+        guessHiLo(gameId, direction),
+        new Promise(resolve => setTimeout(resolve, 350)),
+      ]);
       const data = res.data;
 
-      // Short delay for flip animation
-      await new Promise(resolve => setTimeout(resolve, 400));
+      // Card is now edge-on (invisible) — swap to new card
+      setCurrentCard(data.card);
 
+      // Phase 2: Flip in — reveal the new card
+      setFlipping('in');
+      await new Promise(resolve => setTimeout(resolve, 350));
+      setFlipping(false);
+
+      // Now process the result
       if (data.won) {
-        // Correct guess
-        setHistory(prev => [...prev, currentCard]);
-        setCurrentCard(data.card);
+        setHistory(prev => [...prev, previousCard]);
         setStreak(data.streak);
         setMultiplier(data.multiplier);
         setHigherChance(data.nextHigherChance || 50);
@@ -213,7 +225,6 @@ export default function HiLoGamePage() {
         if (data.balance != null) updateBalance(data.balance);
 
         if (data.gameOver) {
-          // Max streak or deck exhausted - auto cashout
           setGameOver(true);
           setGameActive(false);
           setGameResult('won');
@@ -223,10 +234,8 @@ export default function HiLoGamePage() {
           toast.success(`Correct! Streak: ${data.streak} | ${data.multiplier.toFixed(2)}x`);
         }
       } else {
-        // Wrong guess
-        setHistory(data.history || [...history, currentCard]);
+        setHistory(data.history || [...history, previousCard]);
         setLastWrongCard(data.card);
-        setCurrentCard(data.card);
         setGameOver(true);
         setGameActive(false);
         setGameResult('lost');
@@ -234,9 +243,9 @@ export default function HiLoGamePage() {
         toast.error('Wrong guess! You lost.');
       }
     } catch (err) {
+      setFlipping(false);
       toast.error(err.response?.data?.error || 'Failed to make guess');
     }
-    setFlipping(false);
     setLoading(false);
   }, [gameActive, gameOver, loading, gameId, currentCard, history, updateBalance]);
 
@@ -676,17 +685,22 @@ export default function HiLoGamePage() {
           font-family: var(--font-mono);
         }
 
-        /* Card Flip Animation */
+        /* Card Flip Animation — two phases */
         .hilo-card {
-          transition: transform 0.4s ease-in-out;
           transform-style: preserve-3d;
         }
-        .hilo-card-flip {
-          animation: hilo-flip 0.4s ease-in-out;
+        .hilo-card-flip-out {
+          animation: hilo-flip-out 0.35s ease-in forwards;
         }
-        @keyframes hilo-flip {
+        .hilo-card-flip-in {
+          animation: hilo-flip-in 0.35s ease-out forwards;
+        }
+        @keyframes hilo-flip-out {
           0% { transform: rotateY(0deg) scale(1); }
-          50% { transform: rotateY(90deg) scale(0.95); }
+          100% { transform: rotateY(90deg) scale(0.95); }
+        }
+        @keyframes hilo-flip-in {
+          0% { transform: rotateY(90deg) scale(0.95); }
           100% { transform: rotateY(0deg) scale(1); }
         }
 
