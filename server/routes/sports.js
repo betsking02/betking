@@ -21,23 +21,10 @@ router.get('/:key/matches', (req, res) => {
 
   let completed = [];
   if (!status || status === 'completed') {
-    // For completed: find active series (leagues with live/upcoming matches)
-    const activeSeries = db.prepare(
-      "SELECT DISTINCT league FROM matches WHERE sport_key = ? AND status IN ('live', 'upcoming')"
-    ).all(key).map(r => r.league);
-
-    if (activeSeries.length > 0) {
-      // Show last 3 completed per active series
-      const placeholders = activeSeries.map(() => '?').join(',');
-      completed = db.prepare(
-        `SELECT * FROM matches WHERE sport_key = ? AND status = 'completed' AND league IN (${placeholders}) ORDER BY commence_time DESC LIMIT 9`
-      ).all(key, ...activeSeries);
-    } else {
-      // No active series - show the 6 most recent completed matches
-      completed = db.prepare(
-        "SELECT * FROM matches WHERE sport_key = ? AND status = 'completed' ORDER BY commence_time DESC LIMIT 6"
-      ).all(key);
-    }
+    // Show the most recent completed matches (frontend groups by series)
+    completed = db.prepare(
+      "SELECT * FROM matches WHERE sport_key = ? AND status = 'completed' ORDER BY commence_time DESC LIMIT 9"
+    ).all(key);
   }
 
   const matches = status ? liveUpcoming : [...liveUpcoming, ...completed];
