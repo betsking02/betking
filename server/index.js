@@ -51,6 +51,15 @@ app.get('/api/test-email', async (req, res) => {
   res.json(result);
 });
 
+// Debug: test sending to a specific email (shows full Resend response)
+app.get('/api/test-email-to', async (req, res) => {
+  const email = req.query.email;
+  if (!email) return res.json({ error: 'Usage: /api/test-email-to?email=your@email.com' });
+  const { sendVerificationEmail } = require('./services/emailService');
+  const result = await sendVerificationEmail(email, '123456');
+  res.json({ to: email, result });
+});
+
 // Serve static files in production
 if (isProduction) {
   app.use(express.static(path.join(__dirname, '..', 'client', 'dist')));
