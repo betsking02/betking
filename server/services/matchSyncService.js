@@ -3,6 +3,8 @@ const { fetchCurrentMatches, syncMatchesToDb } = require('./cricketService');
 const { fetchCricketOdds, syncOddsToDb } = require('./oddsService');
 
 let io = null;
+let liveWatchers = 0;
+let livePollingInterval = null;
 
 function setSocketIO(socketIO) {
   io = socketIO;
@@ -14,7 +16,6 @@ async function syncCricketMatches() {
     const matches = await fetchCurrentMatches();
     if (matches.length > 0) {
       const count = syncMatchesToDb(matches);
-      // Broadcast update to all connected clients
       if (io && count > 0) {
         io.emit('matches:updated', { sport: 'cricket', count });
       }
@@ -45,6 +46,34 @@ async function runFullSync() {
   console.log('[SYNC] Full sync complete');
 }
 
+// Smart polling: only poll frequently when users are watching
+function addWatcher() {
+  liveWatchers++;
+  console.log(`[SYNC] Watcher joined. Active watchers: ${liveWatchers}`);
+
+  if (liveWatchers === 1 && !livePollingInterval) {
+    // First watcher - start frequent polling (every 2 minutes)
+    console.log('[SYNC] Starting live polling (every 2 min)...');
+    // Immediate sync when first watcher joins
+    syncCricketMatches();
+    livePollingInterval = setInterval(() => {
+      syncCricketMatches();
+    }, 2 * 60 * 1000); // 2 minutes
+  }
+}
+
+function removeWatcher() {
+  liveWatchers = Math.max(0, liveWatchers - 1);
+  console.log(`[SYNC] Watcher left. Active watchers: ${liveWatchers}`);
+
+  if (liveWatchers === 0 && livePollingInterval) {
+    // No more watchers - stop frequent polling
+    console.log('[SYNC] No watchers, stopping live polling');
+    clearInterval(livePollingInterval);
+    livePollingInterval = null;
+  }
+}
+
 function startAutoSync() {
   // Run initial sync on boot (with small delay to let server start)
   setTimeout(() => {
@@ -52,17 +81,20 @@ function startAutoSync() {
     runFullSync();
   }, 3000);
 
-  // Cricket scores: every 5 minutes
-  cron.schedule('*/5 * * * *', () => {
-    syncCricketMatches();
-  });
-
-  // Odds: every 30 minutes
-  cron.schedule('*/30 * * * *', () => {
+  // Odds: every 2 hours (low frequency to save API calls)
+  cron.schedule('0 */2 * * *', () => {
     syncOdds();
   });
 
-  console.log('[SYNC] Auto-sync scheduled (cricket: 5min, odds: 30min)');
+  // Background cricket sync: every 30 min (just to keep data fresh even without watchers)
+  cron.schedule('*/30 * * * *', () => {
+    if (liveWatchers === 0) {
+      syncCricketMatches();
+    }
+    // If watchers are active, the 2-min interval handles it
+  });
+
+  console.log('[SYNC] Auto-sync scheduled (smart polling: 2min when watched, 30min background, odds: 2h)');
 }
 
-module.exports = { startAutoSync, runFullSync, syncCricketMatches, syncOdds, setSocketIO };
+module.exports = { startAutoSync, runFullSync, syncCricketMatches, syncOdds, setSocketIO, addWatcher, removeWatcher };

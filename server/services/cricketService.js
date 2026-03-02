@@ -26,7 +26,7 @@ async function fetchCurrentMatches() {
     return [];
   }
 
-  // Check cache first (15 min TTL)
+  // Check cache first (2 min TTL for live updates)
   const cached = getCached('cricapi_current_matches');
   if (cached) {
     console.log('[CRICKET] Using cached match data');
@@ -44,7 +44,7 @@ async function fetchCurrentMatches() {
     }
 
     const matches = data.data.filter(m => m.matchType && m.teams && m.teams.length >= 2);
-    setCache('cricapi_current_matches', matches, 15);
+    setCache('cricapi_current_matches', matches, 2); // 2 min cache for near-live updates
     console.log(`[CRICKET] Fetched ${matches.length} matches`);
     return matches;
   } catch (err) {

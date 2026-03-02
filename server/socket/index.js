@@ -128,16 +128,30 @@ function setupSocket(io) {
       socket.leave(`match:${matchId}`);
     });
 
-    // === LIVE SPORTS SUBSCRIPTIONS ===
+    // === LIVE SPORTS SUBSCRIPTIONS (Smart Polling) ===
     socket.on('sports:subscribe', () => {
       socket.join('sports:live');
+      socket._watchingSports = true;
+      const { addWatcher } = require('../services/matchSyncService');
+      addWatcher();
     });
 
     socket.on('sports:unsubscribe', () => {
       socket.leave('sports:live');
+      if (socket._watchingSports) {
+        socket._watchingSports = false;
+        const { removeWatcher } = require('../services/matchSyncService');
+        removeWatcher();
+      }
     });
 
     socket.on('disconnect', () => {
+      // Clean up watcher count if user was watching sports
+      if (socket._watchingSports) {
+        socket._watchingSports = false;
+        const { removeWatcher } = require('../services/matchSyncService');
+        removeWatcher();
+      }
       console.log(`Socket disconnected: ${socket.id}`);
     });
   });
