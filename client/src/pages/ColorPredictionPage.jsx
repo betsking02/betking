@@ -35,19 +35,25 @@ function CircularTimer({ secondsLeft, maxSeconds, status }) {
   const strokeDashoffset = circumference * (1 - fraction);
 
   // Color transitions: green -> yellow -> red
+  const isRevealing = status === 'revealing';
   const timerColor = useMemo(() => {
     if (status === 'result') return '#ffd700';
+    if (isRevealing) return '#a855f7';
     if (secondsLeft > 8) return '#00e701';
     if (secondsLeft > 4) return '#ffb800';
     return '#ff4444';
-  }, [secondsLeft, status]);
+  }, [secondsLeft, status, isRevealing]);
 
-  const isPulsing = secondsLeft <= 4 && status !== 'result';
+  const isPulsing = secondsLeft <= 4 && status !== 'result' && !isRevealing;
 
   return (
     <div
       className="cp-circular-timer"
-      style={{ animation: isPulsing ? 'cpTimerPulse 1s ease-in-out infinite' : 'none' }}
+      style={{
+        animation: isRevealing
+          ? 'cpRevealSpin 0.6s linear infinite'
+          : isPulsing ? 'cpTimerPulse 1s ease-in-out infinite' : 'none'
+      }}
     >
       <svg width={radius * 2} height={radius * 2} viewBox={`0 0 ${radius * 2} ${radius * 2}`}>
         {/* Background track */}
@@ -81,6 +87,8 @@ function CircularTimer({ secondsLeft, maxSeconds, status }) {
       <div className="cp-timer-center" style={{ color: timerColor }}>
         {status === 'result' ? (
           <span className="cp-timer-emoji">&#127881;</span>
+        ) : isRevealing ? (
+          <span className="cp-timer-emoji" style={{ fontSize: '2rem' }}>&#127922;</span>
         ) : (
           <span className="cp-timer-number">{secondsLeft}</span>
         )}
@@ -161,6 +169,7 @@ function StatusBadge({ status }) {
   const config = {
     betting: { text: 'BETTING OPEN', bg: 'rgba(0,231,1,0.15)', color: '#00e701', border: '#00e701' },
     locked: { text: 'BETS LOCKED', bg: 'rgba(255,68,68,0.15)', color: '#ff4444', border: '#ff4444' },
+    revealing: { text: 'REVEALING...', bg: 'rgba(168,85,247,0.15)', color: '#a855f7', border: '#a855f7' },
     result: { text: 'RESULT', bg: 'rgba(255,215,0,0.15)', color: '#ffd700', border: '#ffd700' },
   };
   const c = config[status] || config.betting;
@@ -254,6 +263,10 @@ export default function ColorPredictionPage() {
       setGameState((prev) => ({ ...prev, status: 'locked' }));
     });
 
+    socket.on('color:revealing', () => {
+      setGameState((prev) => ({ ...prev, status: 'revealing', secondsLeft: 0 }));
+    });
+
     socket.on('color:result', ({ color, winners }) => {
       setGameState((prev) => ({
         ...prev,
@@ -278,6 +291,7 @@ export default function ColorPredictionPage() {
       socket.off('color:new_round');
       socket.off('color:tick');
       socket.off('color:locked');
+      socket.off('color:revealing');
       socket.off('color:result');
       socket.off('color:bets_count');
     };
@@ -296,6 +310,7 @@ export default function ColorPredictionPage() {
 
   const isBettingOpen = gameState.status === 'betting';
   const isLocked = gameState.status === 'locked';
+  const isRevealing = gameState.status === 'revealing';
   const isResult = gameState.status === 'result';
   const buttonsDisabled = hasBet || !isBettingOpen;
 
@@ -499,6 +514,11 @@ export default function ColorPredictionPage() {
       color: var(--text-muted);
       background: rgba(255,255,255,0.03);
     }
+    .cp-message--revealing {
+      color: #a855f7;
+      background: rgba(168,85,247,0.1);
+      animation: cpDotBlink 0.8s ease-in-out infinite;
+    }
 
     /* ---- result reveal overlay ---- */
     .cp-result-overlay {
@@ -558,6 +578,11 @@ export default function ColorPredictionPage() {
     @keyframes cpTimerPulse {
       0%, 100% { transform: scale(1); }
       50% { transform: scale(1.06); }
+    }
+    @keyframes cpRevealSpin {
+      0% { transform: rotate(0deg) scale(1); }
+      50% { transform: rotate(180deg) scale(1.08); }
+      100% { transform: rotate(360deg) scale(1); }
     }
     @keyframes cpDotBlink {
       0%, 100% { opacity: 1; }
@@ -668,6 +693,13 @@ export default function ColorPredictionPage() {
           {hasBet && !isResult && (
             <div className="cp-message cp-message--bet">
               Bet placed! Waiting for result...
+            </div>
+          )}
+
+          {/* Revealing message */}
+          {isRevealing && (
+            <div className="cp-message cp-message--revealing">
+              Revealing result...
             </div>
           )}
 

@@ -62,7 +62,13 @@ class ColorPredictionManager {
     }
 
     if (this.secondsLeft <= 0) {
-      this.resolveRound();
+      clearInterval(this.timerInterval);
+      this.status = 'revealing';
+      if (this.io) {
+        this.io.to('color').emit('color:revealing', { roundId: this.roundNumber });
+      }
+      // Suspense delay before showing result
+      setTimeout(() => this.resolveRound(), 1500);
       return;
     }
 
