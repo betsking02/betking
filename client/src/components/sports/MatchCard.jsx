@@ -8,17 +8,20 @@ function CricketScore({ match }) {
     details = typeof match.score_details === 'string' ? JSON.parse(match.score_details) : (match.score_details || {});
   } catch { details = {}; }
 
-  const innings = Object.values(details).filter(i => i && i.runs !== undefined);
-  if (innings.length === 0) return null;
+  const innings = details.innings || [];
+  const statusText = details.statusText || '';
 
   return (
     <div className="cricket-scores">
-      {innings.map((inn, i) => (
+      {innings.length > 0 && innings.map((inn, i) => (
         <div key={i} className="cricket-inning">
           <span className="inning-name">{inn.inning?.split(' Inning')[0] || `Team ${i + 1}`}</span>
           <span className="inning-score">{inn.runs}/{inn.wickets} <small>({inn.overs} ov)</small></span>
         </div>
       ))}
+      {statusText && match.status === 'completed' && (
+        <div className="cricket-result-text">{statusText}</div>
+      )}
     </div>
   );
 }

@@ -1,7 +1,18 @@
 const db = require('../config/database');
 
 const ODDS_API_BASE = 'https://api.the-odds-api.com/v4';
-const CRICKET_SPORTS = ['cricket_odi', 'cricket_t20_world_cup'];
+
+// Map Odds API sport keys to our sport_key in DB
+const SPORT_CONFIGS = [
+  // Cricket
+  { apiKeys: ['cricket_odi', 'cricket_t20_world_cup'], sportKey: 'cricket' },
+  // Football (Soccer) - top leagues
+  { apiKeys: ['soccer_epl', 'soccer_spain_la_liga', 'soccer_uefa_champs_league', 'soccer_italy_serie_a', 'soccer_germany_bundesliga'], sportKey: 'football' },
+  // Basketball
+  { apiKeys: ['basketball_nba'], sportKey: 'basketball' },
+  // Tennis
+  { apiKeys: ['tennis_wta_indian_wells'], sportKey: 'tennis' },
+];
 
 function getApiKey() {
   return process.env.ODDS_API_KEY || '';
@@ -20,80 +31,102 @@ function setCache(key, value, ttlMinutes) {
   db.prepare('INSERT OR REPLACE INTO cache (key, value, expires_at) VALUES (?, ?, ?)').run(key, JSON.stringify(value), expires);
 }
 
-async function fetchCricketOdds() {
+async function fetchAllOdds() {
   const apiKey = getApiKey();
   if (!apiKey) {
     console.log('[ODDS] No ODDS_API_KEY set, skipping');
     return [];
   }
 
-  // Check cache first (2 hour TTL)
-  const cached = getCached('odds_api_cricket');
+  // Check cache first (3 hour TTL to save API calls)
+  const cached = getCached('odds_api_all');
   if (cached) {
     console.log('[ODDS] Using cached odds data');
     return cached;
   }
 
-  const allOdds = [];
+  const allResults = [];
 
-  for (const sportKey of CRICKET_SPORTS) {
-    try {
-      console.log(`[ODDS] Fetching odds for ${sportKey}...`);
-      const res = await fetch(
-        `${ODDS_API_BASE}/sports/${sportKey}/odds/?apiKey=${apiKey}&regions=uk&markets=h2h&oddsFormat=decimal`
-      );
+  for (const config of SPORT_CONFIGS) {
+    for (const apiKey_sport of config.apiKeys) {
+      try {
+        console.log(`[ODDS] Fetching odds for ${apiKey_sport}...`);
+        const res = await fetch(
+          `${ODDS_API_BASE}/sports/${apiKey_sport}/odds/?apiKey=${apiKey}&regions=uk&markets=h2h&oddsFormat=decimal`
+        );
 
-      if (!res.ok) {
-        const errText = await res.text();
-        console.error(`[ODDS] API error for ${sportKey}:`, errText);
-        continue;
+        if (!res.ok) {
+          const errText = await res.text();
+          console.error(`[ODDS] API error for ${apiKey_sport}:`, errText);
+          continue;
+        }
+
+        const data = await res.json();
+        // Tag each event with our sport key
+        data.forEach(event => {
+          event._sportKey = config.sportKey;
+        });
+        allResults.push(...data);
+        console.log(`[ODDS] Got ${data.length} matches for ${apiKey_sport}`);
+
+        // Check remaining API quota from headers
+        const remaining = res.headers.get('x-requests-remaining');
+        if (remaining) console.log(`[ODDS] API requests remaining: ${remaining}`);
+      } catch (err) {
+        console.error(`[ODDS] Fetch error for ${apiKey_sport}:`, err.message);
       }
-
-      const data = await res.json();
-      allOdds.push(...data);
-      console.log(`[ODDS] Got ${data.length} matches with odds for ${sportKey}`);
-    } catch (err) {
-      console.error(`[ODDS] Fetch error for ${sportKey}:`, err.message);
     }
   }
 
-  if (allOdds.length > 0) {
-    setCache('odds_api_cricket', allOdds, 120); // 2 hour cache
+  if (allResults.length > 0) {
+    setCache('odds_api_all', allResults, 180); // 3 hour cache
   }
 
-  console.log(`[ODDS] Total: ${allOdds.length} matches with odds`);
-  return allOdds;
+  console.log(`[ODDS] Total: ${allResults.length} matches across all sports`);
+  return allResults;
+}
+
+// Keep old function name for backwards compat
+async function fetchCricketOdds() {
+  return fetchAllOdds();
 }
 
 function syncOddsToDb(oddsData) {
+  // Ensure unique index exists
+  try {
+    db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_matches_external_id ON matches(external_id) WHERE external_id IS NOT NULL');
+  } catch (e) { /* may already exist */ }
+
   let synced = 0;
 
   for (const event of oddsData) {
-    // Find matching match in our DB by team names or external_id
+    const sportKey = event._sportKey || 'cricket';
+
+    // Find matching match in our DB
     let match = db.prepare(
-      "SELECT id FROM matches WHERE external_id = ? AND sport_key = 'cricket'"
+      'SELECT id FROM matches WHERE external_id = ?'
     ).get(event.id);
 
     if (!match) {
-      // Try to find by team names
+      // Try to find by team names + sport
       match = db.prepare(
-        "SELECT id FROM matches WHERE sport_key = 'cricket' AND ((home_team = ? AND away_team = ?) OR (home_team = ? AND away_team = ?))"
-      ).get(event.home_team, event.away_team, event.away_team, event.home_team);
+        'SELECT id FROM matches WHERE sport_key = ? AND ((home_team = ? AND away_team = ?) OR (home_team = ? AND away_team = ?))'
+      ).get(sportKey, event.home_team, event.away_team, event.away_team, event.home_team);
     }
 
     if (!match) {
-      // Create the match if it doesn't exist
+      // Create the match
       try {
         const result = db.prepare(`
-          INSERT INTO matches (external_id, sport_key, league, home_team, away_team, commence_time, status, is_featured)
-          VALUES (?, 'cricket', ?, ?, ?, ?, 'upcoming', 1)
+          INSERT INTO matches (external_id, sport_key, league, home_team, away_team, commence_time, status, is_featured, score_details)
+          VALUES (?, ?, ?, ?, ?, ?, 'upcoming', 1, '{}')
         `).run(
           event.id,
-          event.sport_title || 'Cricket',
+          sportKey,
+          event.sport_title || sportKey,
           event.home_team,
           event.away_team,
-          event.commence_time,
-          1
+          event.commence_time
         );
         match = { id: result.lastInsertRowid };
       } catch (e) {
@@ -146,4 +179,4 @@ function syncOddsToDb(oddsData) {
   return synced;
 }
 
-module.exports = { fetchCricketOdds, syncOddsToDb };
+module.exports = { fetchCricketOdds, fetchAllOdds, syncOddsToDb };

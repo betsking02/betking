@@ -148,3 +148,12 @@
   font-weight: 400;
   color: var(--text-muted);
 }
+.cricket-result-text {
+  font-size: 0.75rem;
+  color: var(--accent-green);
+  font-weight: 600;
+  text-align: center;
+  padding-top: 0.4rem;
+  margin-top: 0.3rem;
+  border-top: 1px solid rgba(0, 231, 1, 0.15);
+}

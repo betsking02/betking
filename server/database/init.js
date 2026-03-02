@@ -150,9 +150,11 @@ function initDatabase() {
   // Mark existing users as verified so they aren't locked out
   db.prepare("UPDATE users SET is_verified = 1 WHERE is_verified = 0 AND verification_code IS NULL").run();
 
-  // Clean up fake seeded cricket matches (they have external_id like 'cr1', 'cr2', etc.)
-  db.prepare("DELETE FROM odds WHERE match_id IN (SELECT id FROM matches WHERE external_id IN ('cr1','cr2','cr3','cr4','cr5'))").run();
-  db.prepare("DELETE FROM matches WHERE external_id IN ('cr1','cr2','cr3','cr4','cr5')").run();
+  // Clean up all fake seeded matches (external_ids: cr1-5, fb1-5, tn1-3, bb1-3, kb1-3)
+  const fakeIds = ['cr1','cr2','cr3','cr4','cr5','fb1','fb2','fb3','fb4','fb5','tn1','tn2','tn3','bb1','bb2','bb3','kb1','kb2','kb3'];
+  const placeholders = fakeIds.map(() => '?').join(',');
+  db.prepare(`DELETE FROM odds WHERE match_id IN (SELECT id FROM matches WHERE external_id IN (${placeholders}))`).run(...fakeIds);
+  db.prepare(`DELETE FROM matches WHERE external_id IN (${placeholders})`).run(...fakeIds);
 
   console.log('Database initialized successfully');
 }
