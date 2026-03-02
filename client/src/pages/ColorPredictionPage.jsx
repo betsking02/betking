@@ -7,7 +7,7 @@ import GameRulesModal from '../components/common/GameRulesModal';
 import './CasinoGame.css';
 
 const CP_RULES = [
-  'Each round lasts 60 seconds with a countdown timer.',
+  'Each round lasts 15 seconds with a countdown timer.',
   'Place your bet on Red, Green, or Violet during the betting phase.',
   'Bets are locked when the timer reaches 0.',
   'A random winning color is revealed after betting closes.',
@@ -37,12 +37,12 @@ function CircularTimer({ secondsLeft, maxSeconds, status }) {
   // Color transitions: green -> yellow -> red
   const timerColor = useMemo(() => {
     if (status === 'result') return '#ffd700';
-    if (secondsLeft > 30) return '#00e701';
-    if (secondsLeft > 10) return '#ffb800';
+    if (secondsLeft > 8) return '#00e701';
+    if (secondsLeft > 4) return '#ffb800';
     return '#ff4444';
   }, [secondsLeft, status]);
 
-  const isPulsing = secondsLeft <= 10 && status !== 'result';
+  const isPulsing = secondsLeft <= 4 && status !== 'result';
 
   return (
     <div
@@ -211,7 +211,7 @@ export default function ColorPredictionPage() {
   const { user } = useContext(AuthContext);
   const socket = useSocket();
 
-  const MAX_SECONDS = 60; // default countdown total
+  const MAX_SECONDS = 15; // default countdown total
 
   const [gameState, setGameState] = useState({
     status: 'betting',

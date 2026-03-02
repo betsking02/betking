@@ -20,8 +20,8 @@ class ColorPredictionManager {
     this.io = io;
     this.serverSeed = crypto.randomBytes(32).toString('hex');
     this.roundNumber = 0;
-    this.roundDuration = 60; // seconds
-    this.bettingCutoff = 10; // stop bets 10 seconds before result
+    this.roundDuration = 15; // seconds
+    this.bettingCutoff = 3; // stop bets 3 seconds before result
     this.status = 'betting'; // betting | locked | result
     this.bets = []; // { userId, username, color, amount, socketId }
     this.secondsLeft = this.roundDuration;
