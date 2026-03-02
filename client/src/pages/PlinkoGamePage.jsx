@@ -126,7 +126,7 @@ export default function PlinkoGamePage() {
             ...prev,
           ].slice(0, 5));
         }
-      }, 150);
+      }, 300);
     } catch (err) {
       toast.error(err.response?.data?.error || 'Failed to drop ball');
       setLoading(false);

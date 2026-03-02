@@ -130,12 +130,16 @@ export default function CoinFlipGamePage() {
         {/* Result Display */}
         {showResult && (
           <div className={`cf-result ${won ? 'cf-result--won' : 'cf-result--lost'}`}>
+            <div className={`cf-result-coin ${result === 'heads' ? 'cf-result-coin--heads' : 'cf-result-coin--tails'}`}>
+              <span className="cf-result-coin-letter">{result === 'heads' ? 'H' : 'T'}</span>
+              <span className="cf-result-coin-name">{result === 'heads' ? 'HEADS' : 'TAILS'}</span>
+            </div>
             <div className="cf-result-text">
               {won ? 'YOU WON!' : 'YOU LOST!'}
             </div>
             <div className="cf-result-detail">
-              Coin landed on <strong>{result?.toUpperCase()}</strong>
-              {won && <span className="cf-result-payout"> &mdash; +{formatCurrency(lastPayout)}</span>}
+              {won && <span className="cf-result-payout">+{formatCurrency(lastPayout)}</span>}
+              {!won && <span>Better luck next time!</span>}
             </div>
           </div>
         )}
@@ -364,6 +368,37 @@ export default function CoinFlipGamePage() {
         .cf-result--lost {
           background: rgba(255, 68, 68, 0.1);
           border: 1px solid rgba(255, 68, 68, 0.3);
+        }
+        .cf-result-coin {
+          width: 72px;
+          height: 72px;
+          border-radius: 50%;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          margin: 0 auto 0.6rem;
+          font-weight: 900;
+          animation: cfResultPop 0.4s ease-out;
+        }
+        .cf-result-coin--heads {
+          background: linear-gradient(145deg, #ffd700, #b8860b);
+          box-shadow: 0 0 20px rgba(255, 215, 0, 0.4), inset 0 2px 4px rgba(255,255,255,0.3);
+          color: #1a1a2e;
+        }
+        .cf-result-coin--tails {
+          background: linear-gradient(145deg, #c0c0c0, #808080);
+          box-shadow: 0 0 20px rgba(192, 192, 192, 0.4), inset 0 2px 4px rgba(255,255,255,0.3);
+          color: #1a1a2e;
+        }
+        .cf-result-coin-letter {
+          font-size: 1.6rem;
+          line-height: 1;
+        }
+        .cf-result-coin-name {
+          font-size: 0.5rem;
+          letter-spacing: 1px;
+          opacity: 0.8;
         }
         .cf-result-text {
           font-size: 1.5rem;
