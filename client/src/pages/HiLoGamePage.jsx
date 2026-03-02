@@ -12,7 +12,7 @@ const HILO_RULES = [
   'Each correct guess increases your streak and multiplier.',
   'Cash out anytime after your first correct guess to lock in your winnings.',
   'If your guess is wrong, you lose your entire bet.',
-  'Cards rank from A (1) to K (13). Suits do not affect rank.',
+  'Cards rank from 2 (lowest) to A (highest). Suits do not affect rank.',
   'The probability of each outcome is shown on the buttons to help you decide.',
   'Equal value cards count as a loss.',
 ];
@@ -36,15 +36,15 @@ const SUIT_SYMBOLS = {
 const SUIT_COLORS = {
   hearts: '#dc2626',
   diamonds: '#dc2626',
-  clubs: '#ffffff',
-  spades: '#ffffff',
+  clubs: '#1a1a2e',
+  spades: '#1a1a2e',
 };
 
 function PlayingCard({ card, size = 'large', highlight = '', flipping = false }) {
   if (!card) return null;
 
   const suitSymbol = SUIT_SYMBOLS[card.suit] || '';
-  const suitColor = SUIT_COLORS[card.suit] || '#ffffff';
+  const suitColor = SUIT_COLORS[card.suit] || '#1a1a2e';
   const isLarge = size === 'large';
   const isSmall = size === 'small';
 
@@ -210,7 +210,7 @@ export default function HiLoGamePage() {
         setMultiplier(data.multiplier);
         setHigherChance(data.nextHigherChance || 50);
         setLowerChance(data.nextLowerChance || 50);
-        updateBalance(data.balance);
+        if (data.balance != null) updateBalance(data.balance);
 
         if (data.gameOver) {
           // Max streak or deck exhausted - auto cashout
@@ -230,7 +230,7 @@ export default function HiLoGamePage() {
         setGameOver(true);
         setGameActive(false);
         setGameResult('lost');
-        updateBalance(data.balance);
+        if (data.balance != null) updateBalance(data.balance);
         toast.error('Wrong guess! You lost.');
       }
     } catch (err) {
