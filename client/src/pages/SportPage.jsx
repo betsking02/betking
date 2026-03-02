@@ -1,23 +1,55 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useContext, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
 import { getMatchesBySport } from '../api/sports';
 import MatchCard from '../components/sports/MatchCard';
 import BetSlip from '../components/sports/BetSlip';
 import { SPORT_ICONS, SPORT_NAMES } from '../utils/constants';
+import { SocketContext } from '../context/SocketContext';
 
 export default function SportPage() {
   const { sportKey } = useParams();
   const [matches, setMatches] = useState([]);
   const [loading, setLoading] = useState(true);
   const [betSlip, setBetSlip] = useState([]);
+  const socket = useContext(SocketContext);
 
-  useEffect(() => {
-    setLoading(true);
+  const loadMatches = useCallback(() => {
     getMatchesBySport(sportKey)
       .then(res => setMatches(res.data.matches))
       .catch(console.error)
       .finally(() => setLoading(false));
   }, [sportKey]);
+
+  useEffect(() => {
+    setLoading(true);
+    loadMatches();
+  }, [loadMatches]);
+
+  // Auto-refresh when socket says matches or odds updated
+  useEffect(() => {
+    if (!socket) return;
+
+    socket.emit('sports:subscribe');
+
+    const handleUpdate = () => loadMatches();
+    socket.on('matches:updated', handleUpdate);
+    socket.on('odds:updated', handleUpdate);
+
+    return () => {
+      socket.emit('sports:unsubscribe');
+      socket.off('matches:updated', handleUpdate);
+      socket.off('odds:updated', handleUpdate);
+    };
+  }, [socket, loadMatches]);
+
+  // Polling fallback: refresh every 60 seconds when there are live matches
+  useEffect(() => {
+    const hasLive = matches.some(m => m.status === 'live');
+    if (!hasLive) return;
+
+    const interval = setInterval(loadMatches, 60000);
+    return () => clearInterval(interval);
+  }, [matches, loadMatches]);
 
   const addToBetSlip = (match, outcome, odds) => {
     const exists = betSlip.find(b => b.matchId === match.id && b.outcome === outcome);

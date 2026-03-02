@@ -50,7 +50,6 @@ function setupSocket(io) {
     socket.on('crash:place_bet', ({ amount }, callback) => {
       if (!socket.user) return callback?.({ error: 'Not authenticated' });
       try {
-        // Deduct balance
         const user = db.prepare('SELECT balance FROM users WHERE id = ?').get(socket.user.id);
         if (user.balance < amount) return callback?.({ error: 'Insufficient balance' });
 
@@ -74,7 +73,6 @@ function setupSocket(io) {
       try {
         const { payout, multiplier } = crashManager.cashout(socket.id);
 
-        // Credit winnings
         const user = db.prepare('SELECT balance FROM users WHERE id = ?').get(socket.user.id);
         const newBalance = user.balance + payout;
         db.prepare('UPDATE users SET balance = ? WHERE id = ?').run(newBalance, socket.user.id);
@@ -130,6 +128,15 @@ function setupSocket(io) {
       socket.leave(`match:${matchId}`);
     });
 
+    // === LIVE SPORTS SUBSCRIPTIONS ===
+    socket.on('sports:subscribe', () => {
+      socket.join('sports:live');
+    });
+
+    socket.on('sports:unsubscribe', () => {
+      socket.leave('sports:live');
+    });
+
     socket.on('disconnect', () => {
       console.log(`Socket disconnected: ${socket.id}`);
     });
@@ -138,6 +145,10 @@ function setupSocket(io) {
   // Start game loops
   crashManager.start();
   colorManager.start();
+
+  // Wire up match sync to broadcast via socket
+  const { setSocketIO } = require('../services/matchSyncService');
+  setSocketIO(io);
 
   console.log('Socket.io initialized, Crash & Color Prediction games started');
 }

@@ -19,3 +19,7 @@ services:
         value: ""
       - key: EMAIL_FROM
         value: "betsking02@gmail.com"
+      - key: CRICAPI_KEY
+        value: ""
+      - key: ODDS_API_KEY
+        value: ""

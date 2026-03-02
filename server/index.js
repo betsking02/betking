@@ -8,6 +8,7 @@ const path = require('path');
 const initDatabase = require('./database/init');
 const errorHandler = require('./middleware/errorHandler');
 const { setupSocket } = require('./socket/index');
+const { startAutoSync } = require('./services/matchSyncService');
 
 // Initialize database
 initDatabase();
@@ -80,4 +81,6 @@ server.listen(PORT, '0.0.0.0', () => {
   if (!isProduction) {
     console.log(`API: http://localhost:${PORT}/api/health`);
   }
+  // Start auto-sync for live cricket scores & odds
+  startAutoSync();
 });

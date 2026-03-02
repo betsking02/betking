@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../config/database');
+const { runFullSync } = require('../services/matchSyncService');
 
 // Get all sports
 router.get('/', (req, res) => {
@@ -86,6 +87,16 @@ router.get('/matches/:id', (req, res) => {
 
   const odds = db.prepare('SELECT * FROM odds WHERE match_id = ? AND is_active = 1').all(match.id);
   res.json({ match: { ...match, odds } });
+});
+
+// Trigger manual sync
+router.get('/sync', async (req, res) => {
+  try {
+    await runFullSync();
+    res.json({ success: true, message: 'Sync completed' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 module.exports = router;

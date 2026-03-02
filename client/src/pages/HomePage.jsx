@@ -1,16 +1,18 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useContext, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { getFeaturedMatches, getLiveMatches } from '../api/sports';
 import MatchCard from '../components/sports/MatchCard';
 import { CASINO_GAMES } from '../utils/constants';
+import { SocketContext } from '../context/SocketContext';
 import './HomePage.css';
 
 export default function HomePage() {
   const [featured, setFeatured] = useState([]);
   const [live, setLive] = useState([]);
   const [loading, setLoading] = useState(true);
+  const socket = useContext(SocketContext);
 
-  useEffect(() => {
+  const loadMatches = useCallback(() => {
     Promise.all([getFeaturedMatches(), getLiveMatches()])
       .then(([featRes, liveRes]) => {
         setFeatured(featRes.data.matches);
@@ -19,6 +21,35 @@ export default function HomePage() {
       .catch(console.error)
       .finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => {
+    loadMatches();
+  }, [loadMatches]);
+
+  // Auto-refresh when socket says data updated
+  useEffect(() => {
+    if (!socket) return;
+
+    socket.emit('sports:subscribe');
+
+    const handleUpdate = () => loadMatches();
+    socket.on('matches:updated', handleUpdate);
+    socket.on('odds:updated', handleUpdate);
+
+    return () => {
+      socket.emit('sports:unsubscribe');
+      socket.off('matches:updated', handleUpdate);
+      socket.off('odds:updated', handleUpdate);
+    };
+  }, [socket, loadMatches]);
+
+  // Polling fallback: refresh every 60 seconds when there are live matches
+  useEffect(() => {
+    if (live.length === 0) return;
+
+    const interval = setInterval(loadMatches, 60000);
+    return () => clearInterval(interval);
+  }, [live.length, loadMatches]);
 
   return (
     <div className="home-page">
