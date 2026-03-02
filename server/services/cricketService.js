@@ -95,9 +95,13 @@ function parseScores(cricMatch) {
 }
 
 function getLeague(cricMatch) {
+  // Extract series name from match name
+  // e.g. "India vs West Indies, 52nd Match, Super 8 Group 1, ICC Men's T20 World Cup 2026"
+  // → "ICC Men's T20 World Cup 2026"
   if (cricMatch.name) {
-    const parts = cricMatch.name.split(',');
-    if (parts.length > 1) return parts.slice(1).join(',').trim();
+    const parts = cricMatch.name.split(',').map(p => p.trim());
+    if (parts.length >= 3) return parts[parts.length - 1];
+    if (parts.length === 2) return parts[1];
   }
   return cricMatch.matchType?.toUpperCase() || 'Cricket';
 }

@@ -76,6 +76,19 @@ export default function SportPage() {
   const upcoming = matches.filter(m => m.status === 'upcoming');
   const completed = matches.filter(m => m.status === 'completed');
 
+  // Group completed matches by series/league
+  const completedBySeries = {};
+  completed.forEach(m => {
+    const series = m.league || 'Other';
+    if (!completedBySeries[series]) completedBySeries[series] = [];
+    completedBySeries[series].push(m);
+  });
+  // Sort each series by date descending (most recent first) and limit to 3
+  Object.keys(completedBySeries).forEach(series => {
+    completedBySeries[series].sort((a, b) => new Date(b.commence_time) - new Date(a.commence_time));
+    completedBySeries[series] = completedBySeries[series].slice(0, 3);
+  });
+
   return (
     <div style={{ display: 'flex', gap: '1.5rem' }}>
       <div style={{ flex: 1 }}>
@@ -99,10 +112,21 @@ export default function SportPage() {
                 {upcoming.map(m => <MatchCard key={m.id} match={m} onSelectOdds={addToBetSlip} betSlip={betSlip} />)}
               </div>
             )}
-            {completed.length > 0 && (
+            {Object.keys(completedBySeries).length > 0 && (
               <div>
-                <h3 style={{ fontSize: '0.9rem', color: 'var(--text-muted)', marginBottom: '0.75rem' }}>COMPLETED</h3>
-                {completed.map(m => <MatchCard key={m.id} match={m} onSelectOdds={addToBetSlip} betSlip={betSlip} />)}
+                <h3 style={{ fontSize: '0.9rem', color: 'var(--text-muted)', marginBottom: '0.75rem' }}>RECENT RESULTS</h3>
+                {Object.entries(completedBySeries).map(([series, seriesMatches]) => (
+                  <div key={series} style={{ marginBottom: '1rem' }}>
+                    <div style={{
+                      fontSize: '0.75rem', color: 'var(--accent-blue)', fontWeight: '600',
+                      padding: '0.4rem 0.75rem', background: 'rgba(114, 137, 218, 0.08)',
+                      borderRadius: '4px', marginBottom: '0.5rem', letterSpacing: '0.5px'
+                    }}>
+                      {series}
+                    </div>
+                    {seriesMatches.map(m => <MatchCard key={m.id} match={m} onSelectOdds={addToBetSlip} betSlip={betSlip} />)}
+                  </div>
+                ))}
               </div>
             )}
             {matches.length === 0 && <p className="text-muted" style={{ padding: '2rem', textAlign: 'center' }}>No matches found for this sport</p>}

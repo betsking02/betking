@@ -14,16 +14,33 @@ router.get('/:key/matches', (req, res) => {
   const { key } = req.params;
   const { status } = req.query;
 
-  let query = 'SELECT * FROM matches WHERE sport_key = ?';
-  const params = [key];
+  // Get live + upcoming matches (all of them)
+  const liveUpcoming = status
+    ? db.prepare("SELECT * FROM matches WHERE sport_key = ? AND status = ? ORDER BY commence_time ASC").all(key, status)
+    : db.prepare("SELECT * FROM matches WHERE sport_key = ? AND status IN ('live', 'upcoming') ORDER BY commence_time ASC").all(key);
 
-  if (status) {
-    query += ' AND status = ?';
-    params.push(status);
+  let completed = [];
+  if (!status || status === 'completed') {
+    // For completed: find active series (leagues with live/upcoming matches)
+    const activeSeries = db.prepare(
+      "SELECT DISTINCT league FROM matches WHERE sport_key = ? AND status IN ('live', 'upcoming')"
+    ).all(key).map(r => r.league);
+
+    if (activeSeries.length > 0) {
+      // Show last 3 completed per active series
+      const placeholders = activeSeries.map(() => '?').join(',');
+      completed = db.prepare(
+        `SELECT * FROM matches WHERE sport_key = ? AND status = 'completed' AND league IN (${placeholders}) ORDER BY commence_time DESC LIMIT 9`
+      ).all(key, ...activeSeries);
+    } else {
+      // No active series - show the 6 most recent completed matches
+      completed = db.prepare(
+        "SELECT * FROM matches WHERE sport_key = ? AND status = 'completed' ORDER BY commence_time DESC LIMIT 6"
+      ).all(key);
+    }
   }
 
-  query += ' ORDER BY commence_time ASC';
-  const matches = db.prepare(query).all(...params);
+  const matches = status ? liveUpcoming : [...liveUpcoming, ...completed];
 
   // Attach odds to each match
   const matchesWithOdds = matches.map(match => {
