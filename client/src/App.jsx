@@ -20,6 +20,7 @@ import MyBetsPage from './pages/MyBetsPage';
 import WalletPage from './pages/WalletPage';
 import AdminDashboard from './pages/AdminDashboard';
 import UserDashboard from './pages/UserDashboard';
+import MatchDetailPage from './pages/MatchDetailPage';
 
 function AppRoutes() {
   const { user, loading } = useContext(AuthContext);
@@ -59,6 +60,7 @@ function AppRoutes() {
           <Routes>
             <Route path="/" element={<HomePage />} />
             <Route path="/sports/:sportKey" element={<SportPage />} />
+            <Route path="/match/:id" element={<MatchDetailPage />} />
             <Route path="/casino" element={<CasinoPage />} />
             <Route path="/casino/slots" element={<SlotGamePage />} />
             <Route path="/casino/roulette" element={<RouletteGamePage />} />

@@ -1,0 +1,164 @@
+.match-detail { max-width: 800px; margin: 0 auto; }
+.match-detail-loading, .match-detail-empty {
+  text-align: center; padding: 3rem;
+}
+.btn-back {
+  background: none; border: 1px solid var(--border-color); color: var(--text-secondary);
+  padding: 0.4rem 1rem; border-radius: var(--radius-sm); cursor: pointer;
+  font-size: 0.85rem; margin-bottom: 1rem; transition: all 0.2s;
+}
+.btn-back:hover { border-color: var(--accent-blue); color: #fff; }
+
+/* Header */
+.md-header {
+  text-align: center; padding: 1.5rem; background: var(--bg-card);
+  border: 1px solid var(--border-color); border-radius: var(--radius);
+  margin-bottom: 1rem;
+}
+.md-league { font-size: 0.75rem; color: var(--accent-blue); text-transform: uppercase; letter-spacing: 1px; }
+.md-match-name { font-size: 1.1rem; font-weight: 700; margin: 0.5rem 0; }
+.md-venue { font-size: 0.8rem; color: var(--text-muted); }
+.md-date { font-size: 0.75rem; color: var(--text-muted); margin-top: 0.25rem; }
+.md-status-badge { margin-top: 0.75rem; display: inline-block; }
+
+/* Scoreboard */
+.md-scoreboard {
+  display: flex; align-items: center; justify-content: space-between;
+  background: linear-gradient(135deg, #1a2c38, #213743);
+  border: 1px solid var(--border-color); border-radius: var(--radius);
+  padding: 1.5rem; margin-bottom: 1rem; gap: 1rem;
+}
+.md-team { display: flex; align-items: center; gap: 0.75rem; flex: 1; }
+.md-team-right { flex-direction: row-reverse; text-align: right; }
+.md-team-logo { width: 40px; height: 40px; border-radius: 50%; background: #2a3a4a; object-fit: cover; }
+.md-team-name { font-size: 1.1rem; font-weight: 800; }
+.md-team-fullname { font-size: 0.7rem; color: var(--text-muted); max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.md-scores-center { text-align: center; min-width: 200px; }
+.md-vs-text { font-size: 1.5rem; font-weight: 800; color: var(--text-muted); }
+.md-inning-row {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 4px 0; gap: 1rem;
+}
+.md-inning-row + .md-inning-row { border-top: 1px solid rgba(255,255,255,0.08); }
+.md-inning-label { font-size: 0.7rem; color: var(--text-muted); text-align: left; }
+.md-inning-score { font-size: 1rem; font-weight: 700; color: var(--accent-green); font-family: var(--font-mono); }
+
+/* Result text */
+.md-result-text {
+  text-align: center; padding: 0.75rem; background: rgba(0, 231, 1, 0.08);
+  border: 1px solid rgba(0, 231, 1, 0.2); border-radius: var(--radius);
+  color: var(--accent-green); font-weight: 600; font-size: 0.9rem; margin-bottom: 1rem;
+}
+
+/* Tabs */
+.md-tabs {
+  display: flex; gap: 0; border-bottom: 2px solid var(--border-color); margin-bottom: 1rem;
+}
+.md-tab {
+  background: none; border: none; color: var(--text-muted); padding: 0.75rem 1.25rem;
+  cursor: pointer; font-size: 0.85rem; font-weight: 600; border-bottom: 2px solid transparent;
+  margin-bottom: -2px; transition: all 0.2s;
+}
+.md-tab:hover { color: #fff; }
+.md-tab.active { color: var(--accent-blue); border-bottom-color: var(--accent-blue); }
+
+/* Tab Content */
+.md-tab-content { min-height: 200px; }
+
+/* Summary */
+.md-innings-detail { display: flex; flex-direction: column; gap: 1rem; }
+.md-inning-card {
+  background: var(--bg-card); border: 1px solid var(--border-color);
+  border-radius: var(--radius); overflow: hidden;
+}
+.md-inning-header {
+  padding: 0.75rem 1rem; background: rgba(255,255,255,0.03);
+  font-weight: 600; font-size: 0.85rem; border-bottom: 1px solid var(--border-color);
+}
+.md-inning-stats { display: grid; grid-template-columns: repeat(4, 1fr); }
+.md-stat {
+  padding: 1rem; text-align: center;
+  border-right: 1px solid var(--border-color);
+}
+.md-stat:last-child { border-right: none; }
+.md-stat-label { display: block; font-size: 0.7rem; color: var(--text-muted); margin-bottom: 0.25rem; }
+.md-stat-value { display: block; font-size: 1.2rem; font-weight: 700; color: var(--accent-green); font-family: var(--font-mono); }
+
+/* Quick Odds */
+.md-quick-odds {
+  margin-top: 1.5rem; padding: 1rem; background: var(--bg-card);
+  border: 1px solid var(--border-color); border-radius: var(--radius);
+}
+.md-quick-odds h4 { margin: 0 0 0.75rem; font-size: 0.9rem; }
+.md-odds-row { display: flex; gap: 0.75rem; }
+.md-odds-card {
+  flex: 1; padding: 1rem; background: rgba(114, 137, 218, 0.1);
+  border: 1px solid rgba(114, 137, 218, 0.2); border-radius: var(--radius-sm);
+  text-align: center;
+}
+.md-odds-team { display: block; font-size: 0.75rem; color: var(--text-muted); margin-bottom: 0.5rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.md-odds-value { display: block; font-size: 1.3rem; font-weight: 800; color: var(--accent-blue); font-family: var(--font-mono); }
+.md-odds-book { display: block; font-size: 0.65rem; color: var(--text-muted); margin-top: 0.25rem; }
+
+/* Scorecard */
+.md-scorecard { display: flex; flex-direction: column; gap: 1rem; }
+.md-scorecard-table {
+  background: var(--bg-card); border: 1px solid var(--border-color);
+  border-radius: var(--radius); overflow: hidden;
+}
+.md-sc-header {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 0.75rem 1rem; background: rgba(255,255,255,0.03);
+  font-weight: 600; font-size: 0.85rem;
+}
+.md-sc-total { color: var(--accent-green); font-family: var(--font-mono); }
+.md-sc-stats { padding: 0.5rem 0; }
+.md-sc-row {
+  display: flex; justify-content: space-between; padding: 0.5rem 1rem;
+  font-size: 0.85rem;
+}
+.md-sc-row span:first-child { color: var(--text-muted); }
+.md-sc-row span:last-child { font-weight: 600; font-family: var(--font-mono); }
+.md-sc-row:nth-child(even) { background: rgba(255,255,255,0.02); }
+
+/* Info */
+.md-info-grid { display: flex; flex-direction: column; gap: 0; }
+.md-info-row {
+  display: flex; justify-content: space-between; padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--border-color); font-size: 0.85rem;
+}
+.md-info-row:last-child { border-bottom: none; }
+.md-info-label { color: var(--text-muted); min-width: 80px; }
+.md-info-value { font-weight: 500; text-align: right; }
+
+/* Odds Table */
+.md-odds-full { padding: 0.5rem 0; }
+.md-odds-full h4 { margin: 0 0 1rem; font-size: 0.9rem; }
+.md-odds-table {
+  background: var(--bg-card); border: 1px solid var(--border-color);
+  border-radius: var(--radius); overflow: hidden;
+}
+.md-odds-table-header {
+  display: grid; grid-template-columns: 2fr 1fr 1fr;
+  padding: 0.75rem 1rem; background: rgba(255,255,255,0.03);
+  font-size: 0.75rem; color: var(--text-muted); font-weight: 600;
+}
+.md-odds-table-row {
+  display: grid; grid-template-columns: 2fr 1fr 1fr;
+  padding: 0.75rem 1rem; border-top: 1px solid var(--border-color);
+  font-size: 0.85rem;
+}
+.md-ot-outcome { font-weight: 600; }
+.md-ot-odds { color: var(--accent-blue); font-weight: 700; font-family: var(--font-mono); }
+.md-ot-book { color: var(--text-muted); font-size: 0.8rem; }
+
+/* Mobile responsive */
+@media (max-width: 600px) {
+  .md-scoreboard { flex-direction: column; text-align: center; }
+  .md-team, .md-team-right { flex-direction: column; text-align: center; justify-content: center; }
+  .md-team-fullname { max-width: none; }
+  .md-inning-stats { grid-template-columns: repeat(2, 1fr); }
+  .md-stat { border-bottom: 1px solid var(--border-color); }
+  .md-odds-row { flex-direction: column; }
+  .md-tab { padding: 0.6rem 0.75rem; font-size: 0.8rem; }
+}

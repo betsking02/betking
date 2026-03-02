@@ -150,6 +150,10 @@ function initDatabase() {
   // Mark existing users as verified so they aren't locked out
   db.prepare("UPDATE users SET is_verified = 1 WHERE is_verified = 0 AND verification_code IS NULL").run();
 
+  // Clean up fake seeded cricket matches (they have external_id like 'cr1', 'cr2', etc.)
+  db.prepare("DELETE FROM odds WHERE match_id IN (SELECT id FROM matches WHERE external_id IN ('cr1','cr2','cr3','cr4','cr5'))").run();
+  db.prepare("DELETE FROM matches WHERE external_id IN ('cr1','cr2','cr3','cr4','cr5')").run();
+
   console.log('Database initialized successfully');
 }
 

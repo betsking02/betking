@@ -44,7 +44,7 @@ async function fetchCurrentMatches() {
     }
 
     const matches = data.data.filter(m => m.matchType && m.teams && m.teams.length >= 2);
-    setCache('cricapi_current_matches', matches, 2); // 2 min cache for near-live updates
+    setCache('cricapi_current_matches', matches, 2);
     console.log(`[CRICKET] Fetched ${matches.length} matches`);
     return matches;
   } catch (err) {
@@ -62,29 +62,40 @@ function mapCricApiStatus(cricMatch) {
 
 function parseScores(cricMatch) {
   const scores = cricMatch.score || [];
-  const details = {};
+  const innings = [];
   let homeScore = 0;
   let awayScore = 0;
 
   scores.forEach((s, i) => {
-    details[`inning_${i + 1}`] = {
+    innings.push({
       runs: s.r,
       wickets: s.w,
       overs: s.o,
       inning: s.inning
-    };
+    });
   });
 
-  // First team's total runs = home, second = away
   if (scores.length >= 1) homeScore = scores[0].r || 0;
   if (scores.length >= 2) awayScore = scores[1].r || 0;
+
+  // Store rich details including venue, team info, match name, status text
+  const details = {
+    innings,
+    venue: cricMatch.venue || '',
+    matchName: cricMatch.name || '',
+    matchType: cricMatch.matchType || '',
+    statusText: cricMatch.status || '',
+    teamInfo: cricMatch.teamInfo || [],
+    seriesId: cricMatch.series_id || '',
+    bbbEnabled: cricMatch.bbbEnabled || false,
+    hasSquad: cricMatch.hasSquad || false,
+  };
 
   return { homeScore, awayScore, details };
 }
 
 function getLeague(cricMatch) {
   if (cricMatch.name) {
-    // Extract series/league from match name
     const parts = cricMatch.name.split(',');
     if (parts.length > 1) return parts.slice(1).join(',').trim();
   }
@@ -92,17 +103,6 @@ function getLeague(cricMatch) {
 }
 
 function syncMatchesToDb(cricMatches) {
-  const upsertMatch = db.prepare(`
-    INSERT INTO matches (external_id, sport_key, league, home_team, away_team, commence_time, status, home_score, away_score, score_details, is_featured, updated_at)
-    VALUES (?, 'cricket', ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
-    ON CONFLICT(external_id) DO UPDATE SET
-      status = excluded.status,
-      home_score = excluded.home_score,
-      away_score = excluded.away_score,
-      score_details = excluded.score_details,
-      updated_at = datetime('now')
-  `);
-
   // Add unique index on external_id if not exists
   try {
     db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_matches_external_id ON matches(external_id) WHERE external_id IS NOT NULL');
@@ -117,33 +117,23 @@ function syncMatchesToDb(cricMatches) {
     const league = getLeague(cm);
     const commenceTime = cm.dateTimeGMT || cm.date || new Date().toISOString();
     const isFeatured = status === 'live' ? 1 : 0;
+    const scoreJson = JSON.stringify(details);
 
-    try {
-      upsertMatch.run(
-        cm.id,
-        league,
-        cm.teams[0],
-        cm.teams[1],
-        commenceTime,
-        status,
-        homeScore,
-        awayScore,
-        JSON.stringify(details),
-        isFeatured
-      );
-      synced++;
-    } catch (err) {
-      // If UNIQUE constraint fails on external_id, try update only
-      try {
-        db.prepare(`
-          UPDATE matches SET status = ?, home_score = ?, away_score = ?, score_details = ?, updated_at = datetime('now')
-          WHERE external_id = ?
-        `).run(status, homeScore, awayScore, JSON.stringify(details), cm.id);
-        synced++;
-      } catch (e) {
-        console.error(`[CRICKET] Failed to sync match ${cm.id}:`, e.message);
-      }
+    // Try insert first, on conflict update
+    const existing = db.prepare('SELECT id FROM matches WHERE external_id = ?').get(cm.id);
+
+    if (existing) {
+      db.prepare(`
+        UPDATE matches SET status = ?, home_score = ?, away_score = ?, score_details = ?, league = ?, is_featured = ?, updated_at = datetime('now')
+        WHERE external_id = ?
+      `).run(status, homeScore, awayScore, scoreJson, league, isFeatured, cm.id);
+    } else {
+      db.prepare(`
+        INSERT INTO matches (external_id, sport_key, league, home_team, away_team, commence_time, status, home_score, away_score, score_details, is_featured, updated_at)
+        VALUES (?, 'cricket', ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+      `).run(cm.id, league, cm.teams[0], cm.teams[1], commenceTime, status, homeScore, awayScore, scoreJson, isFeatured);
     }
+    synced++;
   }
 
   console.log(`[CRICKET] Synced ${synced} matches to database`);

@@ -48,14 +48,8 @@ function seed() {
   const now = new Date();
   const hour = (h) => new Date(now.getTime() + h * 3600000).toISOString();
 
-  // Cricket matches
-  const cricketMatches = [
-    { ext: 'cr1', league: 'IPL 2026', home: 'Mumbai Indians', away: 'Chennai Super Kings', time: hour(2), status: 'upcoming', featured: 1 },
-    { ext: 'cr2', league: 'IPL 2026', home: 'Royal Challengers Bangalore', away: 'Kolkata Knight Riders', time: hour(-1), status: 'live', featured: 1 },
-    { ext: 'cr3', league: 'IPL 2026', home: 'Delhi Capitals', away: 'Rajasthan Royals', time: hour(5), status: 'upcoming', featured: 0 },
-    { ext: 'cr4', league: 'Test Series', home: 'India', away: 'Australia', time: hour(24), status: 'upcoming', featured: 1 },
-    { ext: 'cr5', league: 'ODI Series', home: 'England', away: 'South Africa', time: hour(48), status: 'upcoming', featured: 0 },
-  ];
+  // Cricket matches - populated from CricAPI, no fake data needed
+  const cricketMatches = [];
 
   // Football matches
   const footballMatches = [
