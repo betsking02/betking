@@ -169,9 +169,31 @@ export default function MinesGamePage() {
         ]}
       />
 
-      {/* Difficulty Selector */}
+      {/* Pre-game Preview + Setup */}
       {!gameActive && !gameOver && (
         <div className="mines-setup">
+          {/* Visual Preview Grid */}
+          <div className="mines-preview">
+            <div className="mines-preview-grid">
+              {Array.from({ length: 25 }, (_, i) => {
+                const previewMines = [4, 11, 18]; // decorative mine positions
+                const previewGems = [0, 2, 6, 8, 12, 14, 16, 20, 22, 24];
+                const isMine = previewMines.includes(i);
+                const isGem = previewGems.includes(i);
+                return (
+                  <div key={i} className={`mines-preview-tile ${isMine ? 'is-mine' : isGem ? 'is-gem' : ''}`}>
+                    {isMine ? '💣' : isGem ? '💎' : ''}
+                  </div>
+                );
+              })}
+            </div>
+            <div className="mines-preview-overlay">
+              <div className="mines-preview-title">MINES</div>
+              <div className="mines-preview-subtitle">Find gems. Avoid mines. Cash out big.</div>
+            </div>
+          </div>
+
+          <div className="mines-setup-controls">
           <div className="mines-difficulty-tabs">
             {Object.entries(DIFFICULTIES).map(([key, d]) => (
               <button
@@ -213,6 +235,7 @@ export default function MinesGamePage() {
           >
             {loading ? 'Starting...' : `START GAME — ${formatCurrency(stake)}`}
           </button>
+          </div>
         </div>
       )}
 
@@ -326,7 +349,70 @@ export default function MinesGamePage() {
           background: var(--bg-card);
           border: 1px solid var(--border-color);
           border-radius: var(--radius-lg);
+          padding: 0;
+          overflow: hidden;
+        }
+        .mines-preview {
+          position: relative;
           padding: 1.5rem;
+          background: linear-gradient(145deg, #0d1b2a, #1a2c3d);
+          border-bottom: 1px solid var(--border-color);
+          overflow: hidden;
+        }
+        .mines-preview-grid {
+          display: grid;
+          grid-template-columns: repeat(5, 1fr);
+          gap: 5px;
+          max-width: 240px;
+          margin: 0 auto;
+          opacity: 0.3;
+        }
+        .mines-preview-tile {
+          aspect-ratio: 1;
+          border-radius: 6px;
+          background: rgba(255,255,255,0.04);
+          border: 1px solid rgba(255,255,255,0.06);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 0.9rem;
+        }
+        .mines-preview-tile.is-gem {
+          background: rgba(0, 231, 1, 0.08);
+          border-color: rgba(0, 231, 1, 0.12);
+        }
+        .mines-preview-tile.is-mine {
+          background: rgba(255, 68, 68, 0.08);
+          border-color: rgba(255, 68, 68, 0.12);
+        }
+        .mines-preview-overlay {
+          position: absolute;
+          inset: 0;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          background: radial-gradient(ellipse at center, rgba(13,27,42,0.4), rgba(13,27,42,0.85));
+          z-index: 2;
+        }
+        .mines-preview-title {
+          font-size: 2.5rem;
+          font-weight: 900;
+          letter-spacing: 6px;
+          background: linear-gradient(135deg, #ffd700, #e67e22);
+          -webkit-background-clip: text;
+          -webkit-text-fill-color: transparent;
+          text-shadow: none;
+          margin-bottom: 0.3rem;
+        }
+        .mines-preview-subtitle {
+          font-size: 0.85rem;
+          color: rgba(255,255,255,0.6);
+          font-weight: 600;
+          letter-spacing: 0.5px;
+        }
+        .mines-setup-controls {
+          padding: 1.25rem;
         }
         .mines-difficulty-tabs {
           display: grid;
