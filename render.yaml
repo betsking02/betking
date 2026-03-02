@@ -15,5 +15,7 @@ services:
         value: "10000"
       - key: MAX_BET
         value: "50000"
-      - key: RESEND_API_KEY
+      - key: BREVO_API_KEY
         value: ""
+      - key: EMAIL_FROM
+        value: "betsking02@gmail.com"

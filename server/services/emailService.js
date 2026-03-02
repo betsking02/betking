@@ -3,28 +3,29 @@ function generateCode() {
 }
 
 async function sendVerificationEmail(email, code) {
-  const apiKey = process.env.RESEND_API_KEY;
+  const apiKey = process.env.BREVO_API_KEY;
   if (!apiKey) {
-    console.error('[EMAIL] RESEND_API_KEY not set');
+    console.error('[EMAIL] BREVO_API_KEY not set');
     return { sent: false, error: 'Email service not configured' };
   }
 
-  const fromEmail = process.env.EMAIL_FROM || 'BetKing <onboarding@resend.dev>';
+  const senderEmail = process.env.EMAIL_FROM || 'betsking02@gmail.com';
+  const senderName = process.env.EMAIL_FROM_NAME || 'BetKing';
 
-  console.log(`[EMAIL] Sending verification to ${email} via Resend`);
+  console.log(`[EMAIL] Sending verification to ${email} via Brevo`);
 
   try {
-    const res = await fetch('https://api.resend.com/emails', {
+    const res = await fetch('https://api.brevo.com/v3/smtp/email', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${apiKey}`,
+        'api-key': apiKey,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        from: fromEmail,
-        to: [email],
+        sender: { name: senderName, email: senderEmail },
+        to: [{ email: email }],
         subject: 'BetKing - Email Verification Code',
-        html: `
+        htmlContent: `
           <div style="font-family: Arial, sans-serif; max-width: 500px; margin: 0 auto; background: #0f1923; color: #fff; border-radius: 12px; overflow: hidden;">
             <div style="background: linear-gradient(135deg, #1a2c38, #213743); padding: 30px; text-align: center;">
               <h1 style="margin: 0; color: #ffd700; font-size: 28px;">&#9813; BetKing</h1>
@@ -49,7 +50,7 @@ async function sendVerificationEmail(email, code) {
     const data = await res.json();
 
     if (res.ok) {
-      console.log(`[EMAIL] SUCCESS - sent to ${email}, id: ${data.id}`);
+      console.log(`[EMAIL] SUCCESS - sent to ${email}, messageId: ${data.messageId}`);
       return { sent: true };
     } else {
       console.error(`[EMAIL] FAILED -`, data);
@@ -62,31 +63,21 @@ async function sendVerificationEmail(email, code) {
 }
 
 async function testEmailConfig() {
-  const apiKey = process.env.RESEND_API_KEY;
+  const apiKey = process.env.BREVO_API_KEY;
   if (!apiKey) {
-    return { ok: false, error: 'RESEND_API_KEY not set' };
+    return { ok: false, error: 'BREVO_API_KEY not set' };
   }
 
   try {
-    // Send a test email to Resend's test address to verify the key works
-    const res = await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        from: process.env.EMAIL_FROM || 'BetKing <onboarding@resend.dev>',
-        to: ['delivered@resend.dev'],
-        subject: 'BetKing - Email Config Test',
-        html: '<p>Email configuration is working!</p>',
-      }),
+    // Check Brevo account info to verify the API key works
+    const res = await fetch('https://api.brevo.com/v3/account', {
+      headers: { 'api-key': apiKey },
     });
     const data = await res.json();
     if (res.ok) {
-      return { ok: true, service: 'Resend', message: 'Test email sent successfully' };
+      return { ok: true, service: 'Brevo', email: data.email };
     }
-    return { ok: false, error: data.message || 'Email send failed' };
+    return { ok: false, error: data.message || 'Invalid API key' };
   } catch (err) {
     return { ok: false, error: err.message };
   }

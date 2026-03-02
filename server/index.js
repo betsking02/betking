@@ -51,7 +51,7 @@ app.get('/api/test-email', async (req, res) => {
   res.json(result);
 });
 
-// Debug: test sending to a specific email (shows full Resend response)
+// Debug: test sending to a specific email (shows full Brevo response)
 app.get('/api/test-email-to', async (req, res) => {
   const email = req.query.email;
   if (!email) return res.json({ error: 'Usage: /api/test-email-to?email=your@email.com' });
