@@ -157,3 +157,7 @@
   margin-top: 0.3rem;
   border-top: 1px solid rgba(0, 231, 1, 0.15);
 }
+.cricket-live-text {
+  color: var(--accent-gold, #ffd700);
+  border-top-color: rgba(255, 215, 0, 0.2);
+}
