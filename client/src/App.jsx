@@ -17,6 +17,10 @@ import PokerGamePage from './pages/PokerGamePage';
 import CrashGamePage from './pages/CrashGamePage';
 import ColorPredictionPage from './pages/ColorPredictionPage';
 import MinesGamePage from './pages/MinesGamePage';
+import DiceRollGamePage from './pages/DiceRollGamePage';
+import PlinkoGamePage from './pages/PlinkoGamePage';
+import CoinFlipGamePage from './pages/CoinFlipGamePage';
+import HiLoGamePage from './pages/HiLoGamePage';
 import MyBetsPage from './pages/MyBetsPage';
 import WalletPage from './pages/WalletPage';
 import AdminDashboard from './pages/AdminDashboard';
@@ -70,6 +74,10 @@ function AppRoutes() {
             <Route path="/casino/crash" element={<CrashGamePage />} />
             <Route path="/casino/color-prediction" element={<ColorPredictionPage />} />
             <Route path="/casino/mines" element={<MinesGamePage />} />
+            <Route path="/casino/dice" element={<DiceRollGamePage />} />
+            <Route path="/casino/plinko" element={<PlinkoGamePage />} />
+            <Route path="/casino/coinflip" element={<CoinFlipGamePage />} />
+            <Route path="/casino/hilo" element={<HiLoGamePage />} />
             <Route path="/dashboard" element={<UserDashboard />} />
             <Route path="/my-bets" element={<MyBetsPage />} />
             <Route path="/wallet" element={<WalletPage />} />

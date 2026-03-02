@@ -9,6 +9,10 @@ const GAME_THUMBNAILS = {
   crash: ['1.2x','2.5x','5.1x','10x'],
   color: ['🔴','🟢','🟣','🔴','🟢'],
   mines: ['💎','💎','💣','💎','💣','💎','💎','💣','💎'],
+  dice: ['🎲','1-100','🎲'],
+  plinko: ['·','··','···','····'],
+  coinflip: ['🪙','H','T','🪙'],
+  hilo: ['🂡','↑','↓','🂮'],
 };
 
 export default function CasinoPage() {

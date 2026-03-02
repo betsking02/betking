@@ -22,6 +22,10 @@ export const CASINO_GAMES = [
   { id: 'crash', name: 'Crash', icon: '📈', path: '/casino/crash', color: '#ff6b00', description: 'Cash out before crash!' },
   { id: 'color', name: 'Color Prediction', icon: '🔴', path: '/casino/color-prediction', color: '#9b59b6', description: 'Predict the color' },
   { id: 'mines', name: 'Mines', icon: '💣', path: '/casino/mines', color: '#e67e22', description: 'Find gems, avoid mines!' },
+  { id: 'dice', name: 'Dice Roll', icon: '🎲', path: '/casino/dice', color: '#3498db', description: 'Over or under?' },
+  { id: 'plinko', name: 'Plinko', icon: '📍', path: '/casino/plinko', color: '#9b59b6', description: 'Watch it drop!' },
+  { id: 'coinflip', name: 'Coin Flip', icon: '🪙', path: '/casino/coinflip', color: '#f39c12', description: 'Heads or tails?' },
+  { id: 'hilo', name: 'Hi-Lo', icon: '🃏', path: '/casino/hilo', color: '#2ecc71', description: 'Higher or lower?' },
 ];
 
 export const BET_AMOUNTS = [100, 500, 1000, 5000, 10000];

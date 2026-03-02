@@ -8,6 +8,10 @@ const roulette = require('../games/roulette');
 const blackjack = require('../games/blackjack');
 const poker = require('../games/poker');
 const mines = require('../games/mines');
+const dice = require('../games/dice');
+const plinko = require('../games/plinko');
+const coinflip = require('../games/coinflip');
+const hilo = require('../games/hilo');
 
 // Helper: process casino bet (deduct stake, return result, credit winnings)
 function processCasinoBet(userId, stake, gameType, selection, gameLogicFn) {
@@ -394,6 +398,168 @@ router.post('/mines/cashout', authenticate, (req, res, next) => {
     res.json(result);
   } catch (err) {
     if (err.message.includes('not found') || err.message.includes('not active') || err.message.includes('Must reveal')) {
+      return res.status(400).json({ error: err.message });
+    }
+    next(err);
+  }
+});
+
+// Dice Roll
+router.post('/dice/roll', authenticate, (req, res, next) => {
+  try {
+    const { stake, target, direction } = req.body;
+    if (!stake) return res.status(400).json({ error: 'Stake is required' });
+    if (!target || !direction) return res.status(400).json({ error: 'Target and direction required' });
+
+    const result = processCasinoBet(req.user.id, stake, 'dice', `${direction} ${target}`, () => {
+      return dice.roll(stake, target, direction);
+    });
+
+    res.json(result);
+  } catch (err) {
+    if (err.message.includes('balance') || err.message.includes('bet') || err.message.includes('Target') || err.message.includes('Direction')) {
+      return res.status(400).json({ error: err.message });
+    }
+    next(err);
+  }
+});
+
+// Plinko
+router.post('/plinko/drop', authenticate, (req, res, next) => {
+  try {
+    const { stake } = req.body;
+    if (!stake) return res.status(400).json({ error: 'Stake is required' });
+
+    const result = processCasinoBet(req.user.id, stake, 'plinko', 'Plinko Drop', () => {
+      return plinko.drop(stake);
+    });
+
+    res.json(result);
+  } catch (err) {
+    if (err.message.includes('balance') || err.message.includes('bet')) {
+      return res.status(400).json({ error: err.message });
+    }
+    next(err);
+  }
+});
+
+// Coin Flip
+router.post('/coinflip/flip', authenticate, (req, res, next) => {
+  try {
+    const { stake, choice } = req.body;
+    if (!stake) return res.status(400).json({ error: 'Stake is required' });
+    if (!choice) return res.status(400).json({ error: 'Choice is required' });
+
+    const result = processCasinoBet(req.user.id, stake, 'coinflip', choice, () => {
+      return coinflip.flip(stake, choice);
+    });
+
+    res.json(result);
+  } catch (err) {
+    if (err.message.includes('balance') || err.message.includes('bet') || err.message.includes('Choice')) {
+      return res.status(400).json({ error: err.message });
+    }
+    next(err);
+  }
+});
+
+// Hi-Lo - Start
+router.post('/hilo/start', authenticate, (req, res, next) => {
+  try {
+    const { stake } = req.body;
+    if (!stake) return res.status(400).json({ error: 'Stake is required' });
+
+    const maxBet = parseFloat(db.prepare("SELECT value FROM app_settings WHERE key = 'max_bet'").get()?.value || '50000');
+    const minBet = parseFloat(db.prepare("SELECT value FROM app_settings WHERE key = 'min_bet'").get()?.value || '10');
+    if (stake > maxBet || stake < minBet) return res.status(400).json({ error: `Bet must be between ${minBet} and ${maxBet}` });
+
+    const user = db.prepare('SELECT balance FROM users WHERE id = ?').get(req.user.id);
+    if (user.balance < stake) return res.status(400).json({ error: 'Insufficient balance' });
+
+    const newBalance = user.balance - stake;
+    db.prepare("UPDATE users SET balance = ?, updated_at = datetime('now') WHERE id = ?").run(newBalance, req.user.id);
+    db.prepare(`
+      INSERT INTO transactions (user_id, type, amount, balance_after, description)
+      VALUES (?, 'bet_placed', ?, ?, 'Hi-Lo bet')
+    `).run(req.user.id, -stake, newBalance);
+
+    const game = hilo.startGame(req.user.id, stake);
+    game.balance = newBalance;
+
+    // Calculate initial probabilities
+    const val = game.currentCard.numericValue;
+    game.higherChance = Math.round(((14 - val) / 13) * 100);
+    game.lowerChance = Math.round(((val - 2) / 13) * 100);
+
+    res.json(game);
+  } catch (err) {
+    if (err.message.includes('balance') || err.message.includes('bet')) {
+      return res.status(400).json({ error: err.message });
+    }
+    next(err);
+  }
+});
+
+// Hi-Lo - Guess
+router.post('/hilo/guess', authenticate, (req, res, next) => {
+  try {
+    const { gameId, direction } = req.body;
+    if (!gameId || !direction) return res.status(400).json({ error: 'gameId and direction required' });
+
+    const result = hilo.guess(gameId, direction);
+
+    if (result.gameOver) {
+      const game = hilo.getGame(gameId);
+      const user = db.prepare('SELECT balance FROM users WHERE id = ?').get(req.user.id);
+      db.prepare(`
+        INSERT INTO bets (user_id, game_type, selection, stake, actual_payout, status, game_details, settled_at)
+        VALUES (?, 'hilo', ?, ?, 0, 'lost', ?, datetime('now'))
+      `).run(req.user.id, `Hi-Lo streak ${game.streak}`, game.stake, JSON.stringify({
+        streak: game.streak,
+        lastCard: result.card.display,
+      }));
+      result.balance = user.balance;
+    }
+
+    res.json(result);
+  } catch (err) {
+    if (err.message.includes('not found') || err.message.includes('not active') || err.message.includes('Guess')) {
+      return res.status(400).json({ error: err.message });
+    }
+    next(err);
+  }
+});
+
+// Hi-Lo - Cashout
+router.post('/hilo/cashout', authenticate, (req, res, next) => {
+  try {
+    const { gameId } = req.body;
+    if (!gameId) return res.status(400).json({ error: 'gameId is required' });
+
+    const game = hilo.getGame(gameId);
+    if (!game) return res.status(400).json({ error: 'Game not found or expired' });
+
+    const result = hilo.cashout(gameId);
+
+    const user = db.prepare('SELECT balance FROM users WHERE id = ?').get(req.user.id);
+    const finalBalance = user.balance + result.payout;
+    db.prepare("UPDATE users SET balance = ?, updated_at = datetime('now') WHERE id = ?").run(finalBalance, req.user.id);
+    db.prepare(`
+      INSERT INTO transactions (user_id, type, amount, balance_after, description)
+      VALUES (?, 'bet_won', ?, ?, ?)
+    `).run(req.user.id, result.payout, finalBalance, `Hi-Lo win x${result.multiplier}`);
+    db.prepare(`
+      INSERT INTO bets (user_id, game_type, selection, stake, actual_payout, status, game_details, settled_at)
+      VALUES (?, 'hilo', ?, ?, ?, 'won', ?, datetime('now'))
+    `).run(req.user.id, `Hi-Lo streak ${result.streak}`, game.stake, result.payout, JSON.stringify({
+      streak: result.streak,
+      multiplier: result.multiplier,
+    }));
+
+    result.balance = finalBalance;
+    res.json(result);
+  } catch (err) {
+    if (err.message.includes('not found') || err.message.includes('not active') || err.message.includes('Must win')) {
       return res.status(400).json({ error: err.message });
     }
     next(err);
