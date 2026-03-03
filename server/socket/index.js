@@ -10,6 +10,21 @@ function setupSocket(io) {
   crashManager = new CrashGameManager(io);
   colorManager = new ColorPredictionManager(io);
 
+  // Auto-cashout handler for Aviator/Crash game
+  crashManager.setAutoCashoutHandler((socketId, bet, multiplier) => {
+    try {
+      const payout = Math.round(bet.amount * multiplier * 100) / 100;
+      const user = db.prepare('SELECT balance FROM users WHERE id = ?').get(bet.userId);
+      if (!user) return false;
+      const newBalance = user.balance + payout;
+      db.prepare('UPDATE users SET balance = ? WHERE id = ?').run(newBalance, bet.userId);
+      db.prepare(`INSERT INTO transactions (user_id, type, amount, balance_after, description)
+        VALUES (?, 'bet_won', ?, ?, ?)`).run(bet.userId, payout, newBalance, `Aviator auto-cashout at ${multiplier}x`);
+      io.to(`user:${bet.userId}`).emit('wallet:balance_update', { balance: newBalance });
+      return true;
+    } catch { return false; }
+  });
+
   // Auth middleware for socket connections
   io.use((socket, next) => {
     const token = socket.handshake.auth?.token;
@@ -47,7 +62,7 @@ function setupSocket(io) {
       socket.leave('crash');
     });
 
-    socket.on('crash:place_bet', ({ amount }, callback) => {
+    socket.on('crash:place_bet', ({ amount, autoCashout }, callback) => {
       if (!socket.user) return callback?.({ error: 'Not authenticated' });
       try {
         const user = db.prepare('SELECT balance FROM users WHERE id = ?').get(socket.user.id);
@@ -57,10 +72,10 @@ function setupSocket(io) {
         db.prepare('UPDATE users SET balance = ? WHERE id = ?').run(newBalance, socket.user.id);
         db.prepare(`
           INSERT INTO transactions (user_id, type, amount, balance_after, description)
-          VALUES (?, 'bet_placed', ?, ?, 'Crash game bet')
+          VALUES (?, 'bet_placed', ?, ?, 'Aviator/Crash game bet')
         `).run(socket.user.id, -amount, newBalance);
 
-        crashManager.placeBet(socket.id, socket.user.id, socket.user.username, amount);
+        crashManager.placeBet(socket.id, socket.user.id, socket.user.username, amount, autoCashout || null);
         io.to(`user:${socket.user.id}`).emit('wallet:balance_update', { balance: newBalance });
         callback?.({ success: true, balance: newBalance });
       } catch (err) {

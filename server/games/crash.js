@@ -24,10 +24,15 @@ class CrashGameManager {
     this.status = 'waiting'; // waiting | running | crashed
     this.crashPoint = 0;
     this.startTime = null;
-    this.bets = new Map(); // socketId -> { userId, username, amount, cashedOut, cashoutMultiplier }
+    this.bets = new Map(); // socketId -> { userId, username, amount, cashedOut, cashoutMultiplier, autoCashout }
     this.multiplier = 1.00;
     this.tickInterval = null;
     this.history = []; // last 20 crash points
+    this.autoCashoutHandler = null; // set by socket/index.js
+  }
+
+  setAutoCashoutHandler(fn) {
+    this.autoCashoutHandler = fn;
   }
 
   start() {
@@ -75,6 +80,27 @@ class CrashGameManager {
       return;
     }
 
+    // Check auto-cashout thresholds
+    if (this.autoCashoutHandler) {
+      for (const [socketId, bet] of this.bets) {
+        if (!bet.cashedOut && bet.autoCashout && this.multiplier >= bet.autoCashout) {
+          const ok = this.autoCashoutHandler(socketId, bet, this.multiplier);
+          if (ok) {
+            bet.cashedOut = true;
+            bet.cashoutMultiplier = this.multiplier;
+            const payout = Math.round(bet.amount * this.multiplier * 100) / 100;
+            if (this.io) {
+              this.io.to('crash').emit('crash:cashed_out', {
+                username: bet.username,
+                multiplier: this.multiplier,
+                payout,
+              });
+            }
+          }
+        }
+      }
+    }
+
     if (this.io) {
       this.io.to('crash').emit('crash:tick', { multiplier: this.multiplier });
     }
@@ -99,7 +125,7 @@ class CrashGameManager {
     setTimeout(() => this.newRound(), 3000);
   }
 
-  placeBet(socketId, userId, username, amount) {
+  placeBet(socketId, userId, username, amount, autoCashout = null) {
     if (this.status !== 'waiting') throw new Error('Bets only during waiting phase');
     if (this.bets.has(socketId)) throw new Error('Already bet this round');
 
@@ -108,7 +134,8 @@ class CrashGameManager {
       username,
       amount,
       cashedOut: false,
-      cashoutMultiplier: null
+      cashoutMultiplier: null,
+      autoCashout: autoCashout && autoCashout > 1 ? autoCashout : null,
     });
 
     if (this.io) {

@@ -15,6 +15,7 @@ import RouletteGamePage from './pages/RouletteGamePage';
 import BlackjackGamePage from './pages/BlackjackGamePage';
 import PokerGamePage from './pages/PokerGamePage';
 import CrashGamePage from './pages/CrashGamePage';
+import AviatorGamePage from './pages/AviatorGamePage';
 import ColorPredictionPage from './pages/ColorPredictionPage';
 import MinesGamePage from './pages/MinesGamePage';
 import DiceRollGamePage from './pages/DiceRollGamePage';
@@ -74,6 +75,7 @@ function AppRoutes() {
             <Route path="/casino/roulette" element={<RouletteGamePage />} />
             <Route path="/casino/blackjack" element={<BlackjackGamePage />} />
             <Route path="/casino/poker" element={<PokerGamePage />} />
+            <Route path="/casino/aviator" element={<AviatorGamePage />} />
             <Route path="/casino/crash" element={<CrashGamePage />} />
             <Route path="/casino/color-prediction" element={<ColorPredictionPage />} />
             <Route path="/casino/mines" element={<MinesGamePage />} />
