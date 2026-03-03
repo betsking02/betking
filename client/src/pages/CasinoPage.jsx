@@ -13,6 +13,9 @@ const GAME_THUMBNAILS = {
   plinko: ['·','··','···','····'],
   coinflip: ['🪙','H','T','🪙'],
   hilo: ['🂡','↑','↓','🂮'],
+  dragontiger: ['🐉','⚔️','🐯'],
+  lucky7: ['A','3','7','9','K'],
+  andarbahar: ['🎴','अ','ब','🎴'],
 };
 
 export default function CasinoPage() {

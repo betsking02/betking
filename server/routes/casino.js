@@ -12,6 +12,9 @@ const dice = require('../games/dice');
 const plinko = require('../games/plinko');
 const coinflip = require('../games/coinflip');
 const hilo = require('../games/hilo');
+const dragontiger = require('../games/dragontiger');
+const lucky7 = require('../games/lucky7');
+const andarbahar = require('../games/andarbahar');
 
 // Helper: process casino bet (deduct stake, return result, credit winnings)
 function processCasinoBet(userId, stake, gameType, selection, gameLogicFn) {
@@ -562,6 +565,48 @@ router.post('/hilo/cashout', authenticate, (req, res, next) => {
     if (err.message.includes('not found') || err.message.includes('not active') || err.message.includes('Must win')) {
       return res.status(400).json({ error: err.message });
     }
+    next(err);
+  }
+});
+
+// Dragon vs Tiger
+router.post('/dragontiger/play', authenticate, (req, res, next) => {
+  try {
+    const { stake, bet } = req.body;
+    if (!stake || !bet) return res.status(400).json({ error: 'stake and bet required' });
+    if (!['dragon','tiger','tie'].includes(bet)) return res.status(400).json({ error: 'Invalid bet' });
+    const result = processCasinoBet(req.user.id, stake, 'dragontiger', bet, () => dragontiger.play(stake, bet));
+    res.json(result);
+  } catch (err) {
+    if (err.message.includes('balance') || err.message.includes('bet')) return res.status(400).json({ error: err.message });
+    next(err);
+  }
+});
+
+// Lucky 7
+router.post('/lucky7/play', authenticate, (req, res, next) => {
+  try {
+    const { stake, bet } = req.body;
+    if (!stake || !bet) return res.status(400).json({ error: 'stake and bet required' });
+    if (!['under','lucky7','over'].includes(bet)) return res.status(400).json({ error: 'Invalid bet' });
+    const result = processCasinoBet(req.user.id, stake, 'lucky7', bet, () => lucky7.play(stake, bet));
+    res.json(result);
+  } catch (err) {
+    if (err.message.includes('balance') || err.message.includes('bet')) return res.status(400).json({ error: err.message });
+    next(err);
+  }
+});
+
+// Andar Bahar
+router.post('/andarbahar/play', authenticate, (req, res, next) => {
+  try {
+    const { stake, bet } = req.body;
+    if (!stake || !bet) return res.status(400).json({ error: 'stake and bet required' });
+    if (!['andar','bahar'].includes(bet)) return res.status(400).json({ error: 'Invalid bet' });
+    const result = processCasinoBet(req.user.id, stake, 'andarbahar', bet, () => andarbahar.play(stake, bet));
+    res.json(result);
+  } catch (err) {
+    if (err.message.includes('balance') || err.message.includes('bet')) return res.status(400).json({ error: err.message });
     next(err);
   }
 });

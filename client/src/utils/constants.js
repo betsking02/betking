@@ -26,6 +26,9 @@ export const CASINO_GAMES = [
   { id: 'plinko', name: 'Plinko', icon: '📍', path: '/casino/plinko', color: '#9b59b6', description: 'Watch it drop!' },
   { id: 'coinflip', name: 'Coin Flip', icon: '🪙', path: '/casino/coinflip', color: '#f39c12', description: 'Heads or tails?' },
   { id: 'hilo', name: 'Hi-Lo', icon: '🃏', path: '/casino/hilo', color: '#2ecc71', description: 'Higher or lower?' },
+  { id: 'dragontiger', name: 'Dragon vs Tiger', icon: '🐉', path: '/casino/dragontiger', color: '#e74c3c', description: 'Dragon or Tiger wins?' },
+  { id: 'lucky7', name: 'Lucky 7', icon: '7️⃣', path: '/casino/lucky7', color: '#f1c40f', description: 'Under, Lucky 7, or Over?' },
+  { id: 'andarbahar', name: 'Andar Bahar', icon: '🎴', path: '/casino/andarbahar', color: '#1abc9c', description: 'Classic Indian card game!' },
 ];
 
 export const BET_AMOUNTS = [100, 500, 1000, 5000, 10000];
