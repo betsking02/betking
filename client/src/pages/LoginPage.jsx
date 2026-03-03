@@ -130,8 +130,8 @@ export default function LoginPage() {
             <span style={styles.logoIcon}>&#9813;</span>
             <span style={styles.logoText}>BetKing</span>
           </div>
-          <p style={styles.tagline}>Demo Betting & Casino Platform</p>
-          <p style={styles.subtitle}>Play with virtual currency - No real money involved</p>
+          <p style={styles.tagline}>Online Betting & Casino Platform</p>
+          <p style={styles.subtitle}>India's trusted real money betting destination</p>
         </div>
 
         {/* Auth Card */}
@@ -304,9 +304,9 @@ export default function LoginPage() {
 
               {/* Demo Login */}
               <button style={styles.btnDemo} onClick={handleDemo} disabled={loading}>
-                {loading ? 'Loading...' : 'Try Demo (No Sign Up)'}
+                {loading ? 'Loading...' : 'Quick Play (No Sign Up)'}
               </button>
-              <p style={styles.demoHint}>Get 10,000 virtual coins instantly</p>
+              <p style={styles.demoHint}>Get ₹10,000 bonus balance instantly</p>
 
               {/* Features */}
               <div style={styles.features}>
@@ -332,7 +332,7 @@ export default function LoginPage() {
         </div>
 
         <p style={styles.disclaimer}>
-          This is a demo platform for educational purposes only. No real money is used.
+          By continuing you agree to our Terms of Service. Play responsibly. 18+
         </p>
       </div>
     </div>

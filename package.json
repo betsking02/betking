@@ -2,7 +2,7 @@
   "name": "betking-demo",
   "version": "1.0.0",
   "private": true,
-  "description": "BetKing - Demo Betting & Casino Platform (Virtual Currency Only)",
+  "description": "BetKing - Online Betting & Casino Platform",
   "workspaces": [
     "client",
     "server"

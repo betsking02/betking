@@ -40,7 +40,7 @@ export default function Header() {
                 <div className="user-dropdown">
                   <div className="dropdown-header">
                     <span>{user.display_name || user.username}</span>
-                    <span className="text-xs text-muted">{user.role === 'demo' ? 'Demo Account' : user.username}</span>
+                    <span className="text-xs text-muted">{user.username}</span>
                   </div>
                   <Link to="/dashboard" className="dropdown-item">Dashboard</Link>
                   <Link to="/my-bets" className="dropdown-item">My Bets</Link>
@@ -52,7 +52,7 @@ export default function Header() {
             </>
           ) : (
             <>
-              <button onClick={handleDemoLogin} className="btn btn-orange btn-sm">Try Demo</button>
+              <button onClick={handleDemoLogin} className="btn btn-orange btn-sm">Quick Play</button>
               <button onClick={() => setShowLogin(true)} className="btn btn-secondary btn-sm">Login</button>
               <button onClick={() => setShowRegister(true)} className="btn btn-primary btn-sm">Register</button>
             </>

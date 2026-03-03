@@ -40,7 +40,7 @@ export default function UserDashboard() {
           <h2>{user.display_name || user.username}</h2>
           <div className="profile-meta">
             <span className="profile-username">@{user.username}</span>
-            {user.role === 'demo' && <span className="badge badge-pending">DEMO</span>}
+
             {user.role === 'admin' && <span className="badge" style={{ background: 'rgba(155,89,182,0.2)', color: '#9b59b6' }}>ADMIN</span>}
           </div>
         </div>

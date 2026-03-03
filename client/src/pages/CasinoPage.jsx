@@ -20,7 +20,7 @@ export default function CasinoPage() {
     <div>
       <h1 style={{ fontSize: '1.5rem', marginBottom: '1.5rem' }}>🎰 Casino Games</h1>
       <p style={{ color: 'var(--text-secondary)', marginBottom: '2rem' }}>
-        Play with virtual currency - all games are for demo purposes only!
+        Play and win real money across all our casino games!
       </p>
       <div style={{
         display: 'grid',

@@ -57,8 +57,8 @@ export default function HomePage() {
       <div className="hero-banner">
         <div className="hero-content">
           <h1>Welcome to <span className="text-gold">BetKing</span></h1>
-          <p>The ultimate demo betting & casino platform</p>
-          <p className="hero-subtitle">Play with virtual currency - No real money involved</p>
+          <p>The ultimate online betting & casino platform</p>
+          <p className="hero-subtitle">Bet on sports, casino games and more — win real money!</p>
         </div>
       </div>
 

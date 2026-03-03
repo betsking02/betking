@@ -40,7 +40,7 @@ async function sendVerificationEmail(email, code) {
               <p style="color: #7a8a9e; font-size: 12px; margin-top: 16px;">If you didn't create an account on BetKing, you can ignore this email.</p>
             </div>
             <div style="background: #0e1b28; padding: 16px; text-align: center;">
-              <p style="color: #5a6a7e; font-size: 11px; margin: 0;">BetKing - Demo Platform | No real money involved</p>
+              <p style="color: #5a6a7e; font-size: 11px; margin: 0;">BetKing | Online Betting & Casino | Play Responsibly</p>
             </div>
           </div>
         `,

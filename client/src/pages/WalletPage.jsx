@@ -77,11 +77,6 @@ export default function WalletPage() {
         }}>
           ₹{formatCurrency(user.balance)}
         </div>
-        {user.role === 'demo' && (
-          <div style={{ fontSize: '0.75rem', color: 'var(--accent-orange)', marginTop: '0.25rem' }}>
-            Demo account - Virtual currency only
-          </div>
-        )}
 
         <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center', marginTop: '1.5rem' }}>
           <button
