@@ -1,13 +1,13 @@
-import { useState, useContext, useCallback } from 'react';
-import { AuthContext } from '../context/AuthContext';
-import { playDragonTiger } from '../api/casino';
+import { useState, useEffect, useMemo } from 'react';
+import { useLiveGame } from '../hooks/useLiveGame';
 import { formatCurrency, BET_AMOUNTS } from '../utils/constants';
-import toast from 'react-hot-toast';
 import GameRulesModal from '../components/common/GameRulesModal';
 import './CasinoGame.css';
 
 const DT_RULES = [
-  'Place your bet on Dragon, Tiger, or Tie.',
+  'Each round lasts 30 seconds with a countdown timer.',
+  'Place your bet on Dragon, Tiger, or Tie during the betting phase.',
+  'Bets are locked when the timer reaches 0.',
   'One card is dealt to Dragon and one to Tiger.',
   'The side with the higher card wins.',
   'Dragon or Tiger bet pays 1.94x your stake.',
@@ -204,78 +204,172 @@ function HistoryBadge({ result }) {
   );
 }
 
-export default function DragonTigerGamePage() {
-  const { user, updateBalance } = useContext(AuthContext);
-  const [stake, setStake] = useState(BET_AMOUNTS[0]);
-  const [selectedBet, setSelectedBet] = useState(null); // 'dragon'|'tiger'|'tie'|null
-  const [result, setResult] = useState(null);           // API result object
-  const [loading, setLoading] = useState(false);
-  const [dealing, setDealing] = useState(false);        // face-down cards shown
-  const [history, setHistory] = useState([]);           // array of result strings
+/* ── Circular Countdown Timer (SVG) ── */
+function CircularTimer({ secondsLeft, maxSeconds, status }) {
+  const radius = 60;
+  const stroke = 7;
+  const normalizedRadius = radius - stroke / 2;
+  const circumference = 2 * Math.PI * normalizedRadius;
 
-  const handlePlay = useCallback(async (betChoice) => {
-    if (!user) return toast.error('Please login first');
-    if (stake > (user?.balance || 0)) return toast.error('Insufficient balance');
-    if (loading || dealing) return;
+  const fraction = maxSeconds > 0 ? secondsLeft / maxSeconds : 0;
+  const strokeDashoffset = circumference * (1 - fraction);
 
-    setSelectedBet(betChoice);
-    setResult(null);
-    setDealing(true);
-    setLoading(true);
+  const isRevealing = status === 'revealing';
+  const timerColor = useMemo(() => {
+    if (status === 'result') return '#ffd700';
+    if (isRevealing) return '#a855f7';
+    if (status === 'locked') return '#ff8c00';
+    if (secondsLeft > 15) return '#00e701';
+    if (secondsLeft > 7) return '#ffb800';
+    return '#ff4444';
+  }, [secondsLeft, status, isRevealing]);
 
-    try {
-      const res = await playDragonTiger(stake, betChoice);
-      const data = res.data;
-      const game = data.gameResult;
+  const isPulsing = secondsLeft <= 5 && status === 'betting';
 
-      // Brief pause so face-down card animation is visible (at least 600ms)
-      await new Promise(resolve => setTimeout(resolve, 650));
+  return (
+    <div
+      className="dt-circular-timer"
+      style={{
+        animation: isRevealing
+          ? 'dtRevealSpin 0.6s linear infinite'
+          : isPulsing ? 'dtTimerPulse 1s ease-in-out infinite' : 'none'
+      }}
+    >
+      <svg width={radius * 2} height={radius * 2} viewBox={`0 0 ${radius * 2} ${radius * 2}`}>
+        {/* Background track */}
+        <circle
+          cx={radius}
+          cy={radius}
+          r={normalizedRadius}
+          fill="none"
+          stroke="rgba(255,255,255,0.08)"
+          strokeWidth={stroke}
+        />
+        {/* Animated arc */}
+        <circle
+          cx={radius}
+          cy={radius}
+          r={normalizedRadius}
+          fill="none"
+          stroke={timerColor}
+          strokeWidth={stroke}
+          strokeLinecap="round"
+          strokeDasharray={circumference}
+          strokeDashoffset={strokeDashoffset}
+          transform={`rotate(-90 ${radius} ${radius})`}
+          style={{
+            transition: 'stroke-dashoffset 0.95s linear, stroke 0.5s ease',
+            filter: `drop-shadow(0 0 6px ${timerColor}80)`,
+          }}
+        />
+      </svg>
+      {/* Center number */}
+      <div className="dt-timer-center" style={{ color: timerColor }}>
+        {status === 'result' ? (
+          <span className="dt-timer-emoji">{'\uD83C\uDF89'}</span>
+        ) : isRevealing ? (
+          <span className="dt-timer-emoji" style={{ fontSize: '1.8rem' }}>{'\uD83C\uDCCF'}</span>
+        ) : status === 'locked' ? (
+          <span className="dt-timer-emoji" style={{ fontSize: '1.6rem' }}>{'\uD83D\uDD12'}</span>
+        ) : (
+          <span className="dt-timer-number">{secondsLeft}</span>
+        )}
+      </div>
+    </div>
+  );
+}
 
-      setDealing(false);
-      // Small gap before flipping in
-      await new Promise(resolve => setTimeout(resolve, 80));
-
-      setResult(game);
-      updateBalance(data.balance);
-      setHistory(prev => [game.result, ...prev].slice(0, 8));
-
-      if (game.won) {
-        toast.success(`You won ${formatCurrency(data.payout)}! (${game.multiplier}x)`);
-      } else {
-        toast.error(`${game.result === 'tie' ? 'Tie!' : game.result.charAt(0).toUpperCase() + game.result.slice(1) + ' wins!'} Better luck next time.`);
-      }
-    } catch (err) {
-      setDealing(false);
-      toast.error(err.response?.data?.error || 'Failed to place bet');
-    }
-    setLoading(false);
-  }, [user, stake, loading, dealing, updateBalance]);
-
-  const resetGame = () => {
-    setResult(null);
-    setDealing(false);
-    setSelectedBet(null);
-    setLoading(false);
+/* ── Status Badge ── */
+function StatusBadge({ status }) {
+  const config = {
+    betting:   { label: 'PLACE BETS',   bg: 'rgba(0,231,1,0.12)',   color: '#00e701', border: 'rgba(0,231,1,0.35)' },
+    locked:    { label: 'BETS LOCKED',  bg: 'rgba(255,140,0,0.12)', color: '#ff8c00', border: 'rgba(255,140,0,0.35)' },
+    revealing: { label: 'REVEALING...',  bg: 'rgba(168,85,247,0.12)', color: '#a855f7', border: 'rgba(168,85,247,0.35)' },
+    result:    { label: 'ROUND RESULT', bg: 'rgba(255,215,0,0.12)', color: '#ffd700', border: 'rgba(255,215,0,0.35)' },
   };
+  const c = config[status] || config.betting;
+
+  return (
+    <div style={{
+      display: 'inline-flex',
+      alignItems: 'center',
+      gap: 6,
+      padding: '4px 14px',
+      borderRadius: 20,
+      background: c.bg,
+      border: `1px solid ${c.border}`,
+      fontSize: '0.72rem',
+      fontWeight: 800,
+      letterSpacing: '1.5px',
+      color: c.color,
+      textTransform: 'uppercase',
+    }}>
+      <span style={{
+        width: 7,
+        height: 7,
+        borderRadius: '50%',
+        background: c.color,
+        animation: status === 'betting' ? 'dtStatusPulse 1.2s ease-in-out infinite' : 'none',
+      }} />
+      {c.label}
+    </div>
+  );
+}
+
+export default function DragonTigerGamePage() {
+  const {
+    gameState,
+    roundResult,
+    selectedBet, setSelectedBet,
+    stake, setStake,
+    hasBet,
+    myBetChoice,
+    placeBet,
+    isMyWin, myPayout,
+  } = useLiveGame('dragontiger');
+
+  const { status, secondsLeft, roundId, betCounts, totalBets, history } = gameState;
+
+  /* Card reveal stagger state */
+  const [showDragonCard, setShowDragonCard] = useState(false);
+  const [showTigerCard, setShowTigerCard] = useState(false);
+
+  useEffect(() => {
+    if (status === 'revealing' && roundResult) {
+      setShowDragonCard(false);
+      setShowTigerCard(false);
+      const t1 = setTimeout(() => setShowDragonCard(true), 200);
+      const t2 = setTimeout(() => setShowTigerCard(true), 800);
+      return () => { clearTimeout(t1); clearTimeout(t2); };
+    }
+    if (status === 'result' && roundResult) {
+      setShowDragonCard(true);
+      setShowTigerCard(true);
+    }
+    if (status === 'betting') {
+      setShowDragonCard(false);
+      setShowTigerCard(false);
+    }
+  }, [status, roundResult]);
 
   /* Determine card highlights after result */
   const getDragonHighlight = () => {
-    if (!result) return '';
-    if (result.result === 'tie') return 'tie';
-    return result.result === 'dragon' ? 'win' : 'lose';
+    if (!roundResult) return '';
+    if (roundResult.result === 'tie') return 'tie';
+    return roundResult.result === 'dragon' ? 'win' : 'lose';
   };
 
   const getTigerHighlight = () => {
-    if (!result) return '';
-    if (result.result === 'tie') return 'tie';
-    return result.result === 'tiger' ? 'win' : 'lose';
+    if (!roundResult) return '';
+    if (roundResult.result === 'tie') return 'tie';
+    return roundResult.result === 'tiger' ? 'win' : 'lose';
   };
 
-  const isPreGame = !dealing && !result;
+  const bettingDisabled = hasBet || status !== 'betting';
 
   return (
     <div className="casino-game-page" style={{ maxWidth: 600 }}>
-      <h1>&#x1F409; Dragon vs Tiger</h1>
+      <h1>{'\uD83D\uDC09'} Dragon vs Tiger</h1>
 
       <GameRulesModal
         gameKey="dragontiger"
@@ -284,208 +378,211 @@ export default function DragonTigerGamePage() {
         payouts={DT_PAYOUTS}
       />
 
-      {/* ====== PRE-GAME: Preview + Setup ====== */}
-      {isPreGame && (
-        <div className="dt-setup">
-          {/* Preview banner */}
-          <div className="dt-preview">
-            <div className="dt-preview-fighters">
-              <div className="dt-preview-fighter dt-fighter-dragon">
-                <span className="dt-fighter-emoji">&#x1F409;</span>
-              </div>
-              <div className="dt-preview-vs-circle">VS</div>
-              <div className="dt-preview-fighter dt-fighter-tiger">
-                <span className="dt-fighter-emoji">&#x1F42F;</span>
-              </div>
-            </div>
-            <div className="dt-preview-overlay">
-              <div className="dt-preview-title">DRAGON vs TIGER</div>
-              <div className="dt-preview-subtitle">Which side will win?</div>
-            </div>
-          </div>
-
-          {/* Controls */}
-          <div className="dt-setup-controls">
-            {/* Stake selector */}
-            <div className="stake-selector">
-              <label>Bet Amount</label>
-              <div className="stake-buttons">
-                {BET_AMOUNTS.map(amt => (
-                  <button
-                    key={amt}
-                    className={`btn btn-sm ${stake === amt ? 'btn-primary' : 'btn-outline'}`}
-                    onClick={() => setStake(amt)}
-                  >
-                    {formatCurrency(amt)}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* 3 bet buttons */}
-            <div className="dt-bet-buttons">
-              {/* DRAGON */}
-              <button
-                className="dt-bet-btn dt-bet-dragon"
-                onClick={() => handlePlay('dragon')}
-                disabled={loading || !user || stake > (user?.balance || 0)}
-              >
-                <span className="dt-btn-emoji">&#x1F409;</span>
-                <span className="dt-btn-label">DRAGON</span>
-                <span className="dt-btn-mult">1.94x</span>
-              </button>
-
-              {/* TIE */}
-              <button
-                className="dt-bet-btn dt-bet-tie"
-                onClick={() => handlePlay('tie')}
-                disabled={loading || !user || stake > (user?.balance || 0)}
-              >
-                <span className="dt-btn-tie-eq">=</span>
-                <span className="dt-btn-label">TIE</span>
-                <span className="dt-btn-mult">8x</span>
-              </button>
-
-              {/* TIGER */}
-              <button
-                className="dt-bet-btn dt-bet-tiger"
-                onClick={() => handlePlay('tiger')}
-                disabled={loading || !user || stake > (user?.balance || 0)}
-              >
-                <span className="dt-btn-emoji">&#x1F42F;</span>
-                <span className="dt-btn-label">TIGER</span>
-                <span className="dt-btn-mult">1.94x</span>
-              </button>
-            </div>
-
-            {/* Bet amount display */}
-            <div className="dt-stake-display">
-              Placing <strong>{formatCurrency(stake)}</strong> on your chosen side
-            </div>
-          </div>
+      {/* ====== HEADER: Timer + Status + Round ====== */}
+      <div className="dt-live-header">
+        <CircularTimer secondsLeft={secondsLeft} maxSeconds={30} status={status} />
+        <div className="dt-live-header-info">
+          <StatusBadge status={status} />
+          <div className="dt-round-number">Round #{roundId || '---'}</div>
+          <div className="dt-total-bets">{totalBets || 0} total bets this round</div>
         </div>
-      )}
+      </div>
 
-      {/* ====== DEALING: Face-down cards ====== */}
-      {dealing && (
-        <div className="dt-game-area">
-          <div className="dt-dealing-banner">
-            <div className="dt-dealing-dots">
-              <span /><span /><span />
-            </div>
-            <span>Dealing cards...</span>
-          </div>
-
-          <div className="dt-table">
-            {/* Dragon side */}
-            <div className="dt-side">
-              <div className="dt-side-label dt-side-label-dragon">&#x1F409; DRAGON</div>
-              <div className="dt-card-wrapper dt-card-dealing">
-                <CardBack size="large" />
-              </div>
-            </div>
-
-            {/* VS divider */}
-            <div className="dt-vs-divider">
-              <div className="dt-vs-text">VS</div>
-            </div>
-
-            {/* Tiger side */}
-            <div className="dt-side">
-              <div className="dt-side-label dt-side-label-tiger">&#x1F42F; TIGER</div>
-              <div className="dt-card-wrapper dt-card-dealing dt-card-dealing-right">
-                <CardBack size="large" />
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ====== RESULT ====== */}
-      {result && !dealing && (
-        <div className="dt-game-area">
-          {/* Result banner */}
-          <div className={`dt-result-banner ${result.won ? 'dt-result-win' : result.result === 'tie' && selectedBet === 'tie' ? 'dt-result-win' : 'dt-result-lose'}`}>
-            {result.won ? (
+      {/* ====== CARD TABLE ====== */}
+      <div className="dt-game-area">
+        {/* Result banner (only during 'result' phase) */}
+        {status === 'result' && roundResult && myBetChoice && (
+          <div className={`dt-result-banner ${isMyWin ? 'dt-result-win' : 'dt-result-lose'}`}>
+            {isMyWin ? (
               <>
-                <div className="dt-result-icon">&#x2714;</div>
+                <div className="dt-result-icon">{'\u2714'}</div>
                 <div className="dt-result-title">You Won!</div>
-                <div className="dt-result-payout">+{formatCurrency(result.payout)}</div>
-                <div className="dt-result-sub">{result.multiplier}x &mdash; {result.result === 'dragon' ? '&#x1F409; Dragon wins' : result.result === 'tiger' ? '&#x1F42F; Tiger wins' : 'Tie!'}</div>
+                <div className="dt-result-payout">+{formatCurrency(myPayout)}</div>
+                <div className="dt-result-sub">
+                  {roundResult.result === 'dragon' ? '\uD83D\uDC09 Dragon wins' : roundResult.result === 'tiger' ? '\uD83D\uDC2F Tiger wins' : 'Tie!'}
+                </div>
               </>
             ) : (
               <>
-                <div className="dt-result-icon">&#x2716;</div>
+                <div className="dt-result-icon">{'\u2716'}</div>
                 <div className="dt-result-title">
-                  {result.result === 'dragon' ? '\uD83D\uDC09 Dragon Wins' : result.result === 'tiger' ? '\uD83D\uDC2F Tiger Wins' : 'Tie!'}
+                  {roundResult.result === 'dragon' ? '\uD83D\uDC09 Dragon Wins' : roundResult.result === 'tiger' ? '\uD83D\uDC2F Tiger Wins' : 'Tie!'}
                 </div>
-                <div className="dt-result-sub">You lost {formatCurrency(stake)}</div>
+                <div className="dt-result-sub">Better luck next round</div>
               </>
             )}
           </div>
+        )}
 
-          {/* Card table */}
-          <div className="dt-table">
-            {/* Dragon side */}
-            <div className="dt-side">
-              <div className={`dt-side-label ${getDragonHighlight() === 'win' ? 'dt-side-label-win' : getDragonHighlight() === 'tie' ? 'dt-side-label-tie' : 'dt-side-label-dragon'}`}>
-                &#x1F409; DRAGON
-              </div>
-              <div className="dt-card-wrapper">
+        {/* Result banner for non-bettors showing round outcome */}
+        {status === 'result' && roundResult && !myBetChoice && (
+          <div className="dt-result-banner dt-result-neutral">
+            <div className="dt-result-title" style={{ fontSize: '1.2rem' }}>
+              {roundResult.result === 'dragon' ? '\uD83D\uDC09 Dragon Wins!' : roundResult.result === 'tiger' ? '\uD83D\uDC2F Tiger Wins!' : '= Tie!'}
+            </div>
+          </div>
+        )}
+
+        {/* Card table */}
+        <div className="dt-table">
+          {/* Dragon side */}
+          <div className="dt-side">
+            <div className={`dt-side-label ${
+              (status === 'result' || (status === 'revealing' && showDragonCard))
+                ? (getDragonHighlight() === 'win' ? 'dt-side-label-win' : getDragonHighlight() === 'tie' ? 'dt-side-label-tie' : 'dt-side-label-dragon')
+                : 'dt-side-label-dragon'
+            }`}>
+              {'\uD83D\uDC09'} DRAGON
+            </div>
+            <div className="dt-card-wrapper">
+              {(status === 'revealing' || status === 'result') && showDragonCard && roundResult ? (
                 <PlayingCard
-                  card={result.dragon}
+                  card={roundResult.dragon}
                   size="large"
-                  highlight={getDragonHighlight()}
+                  highlight={status === 'result' ? getDragonHighlight() : ''}
                   flipping="in"
                 />
-              </div>
+              ) : (
+                <CardBack size="large" />
+              )}
+            </div>
+            {showDragonCard && roundResult?.dragon && (
               <div className="dt-card-rank-label">
-                {result.dragon?.display} ({result.dragon?.numericValue})
+                {roundResult.dragon.display} ({roundResult.dragon.numericValue})
               </div>
-            </div>
+            )}
+          </div>
 
-            {/* VS divider */}
-            <div className="dt-vs-divider">
-              <div className={`dt-vs-text ${result.result === 'tie' ? 'dt-vs-tie' : ''}`}>VS</div>
-            </div>
+          {/* VS divider */}
+          <div className="dt-vs-divider">
+            <div className={`dt-vs-text ${status === 'result' && roundResult?.result === 'tie' ? 'dt-vs-tie' : ''}`}>VS</div>
+          </div>
 
-            {/* Tiger side */}
-            <div className="dt-side">
-              <div className={`dt-side-label ${getTigerHighlight() === 'win' ? 'dt-side-label-win' : getTigerHighlight() === 'tie' ? 'dt-side-label-tie' : 'dt-side-label-tiger'}`}>
-                &#x1F42F; TIGER
-              </div>
-              <div className="dt-card-wrapper">
+          {/* Tiger side */}
+          <div className="dt-side">
+            <div className={`dt-side-label ${
+              (status === 'result' || (status === 'revealing' && showTigerCard))
+                ? (getTigerHighlight() === 'win' ? 'dt-side-label-win' : getTigerHighlight() === 'tie' ? 'dt-side-label-tie' : 'dt-side-label-tiger')
+                : 'dt-side-label-tiger'
+            }`}>
+              {'\uD83D\uDC2F'} TIGER
+            </div>
+            <div className="dt-card-wrapper">
+              {(status === 'revealing' || status === 'result') && showTigerCard && roundResult ? (
                 <PlayingCard
-                  card={result.tiger}
+                  card={roundResult.tiger}
                   size="large"
-                  highlight={getTigerHighlight()}
+                  highlight={status === 'result' ? getTigerHighlight() : ''}
                   flipping="in"
                 />
-              </div>
+              ) : (
+                <CardBack size="large" />
+              )}
+            </div>
+            {showTigerCard && roundResult?.tiger && (
               <div className="dt-card-rank-label">
-                {result.tiger?.display} ({result.tiger?.numericValue})
+                {roundResult.tiger.display} ({roundResult.tiger.numericValue})
               </div>
+            )}
+          </div>
+        </div>
+
+        {/* Locked overlay message */}
+        {status === 'locked' && (
+          <div className="dt-locked-banner">
+            {'\uD83D\uDD12'} Bets Locked &mdash; Waiting for cards...
+          </div>
+        )}
+      </div>
+
+      {/* ====== BET CONTROLS ====== */}
+      <div className="dt-setup">
+        <div className="dt-setup-controls">
+          {/* My bet indicator */}
+          {hasBet && (
+            <div className="dt-my-bet-indicator">
+              You bet <strong>{formatCurrency(stake)}</strong> on <strong style={{ textTransform: 'capitalize' }}>{myBetChoice}</strong>
+            </div>
+          )}
+
+          {/* Stake selector */}
+          <div className="stake-selector">
+            <label>Bet Amount</label>
+            <div className="stake-buttons">
+              {BET_AMOUNTS.map(amt => (
+                <button
+                  key={amt}
+                  className={`btn btn-sm ${stake === amt ? 'btn-primary' : 'btn-outline'}`}
+                  onClick={() => setStake(amt)}
+                  disabled={hasBet}
+                >
+                  {formatCurrency(amt)}
+                </button>
+              ))}
             </div>
           </div>
 
-          {/* Play Again */}
-          <button
-            className="btn btn-primary"
-            onClick={resetGame}
-            style={{ width: '100%', padding: '0.9rem', fontSize: '1rem', fontWeight: 800, marginTop: '0.25rem' }}
-          >
-            PLAY AGAIN
-          </button>
+          {/* 3 bet buttons */}
+          <div className="dt-bet-buttons">
+            {/* DRAGON */}
+            <button
+              className={`dt-bet-btn dt-bet-dragon ${selectedBet === 'dragon' ? 'dt-bet-btn-selected' : ''}`}
+              onClick={() => { setSelectedBet('dragon'); placeBet('dragon'); }}
+              disabled={bettingDisabled}
+            >
+              <span className="dt-btn-emoji">{'\uD83D\uDC09'}</span>
+              <span className="dt-btn-label">DRAGON</span>
+              <span className="dt-btn-mult">1.94x</span>
+              <span className="dt-btn-count">{betCounts?.dragon || 0} bets</span>
+            </button>
+
+            {/* TIE */}
+            <button
+              className={`dt-bet-btn dt-bet-tie ${selectedBet === 'tie' ? 'dt-bet-btn-selected' : ''}`}
+              onClick={() => { setSelectedBet('tie'); placeBet('tie'); }}
+              disabled={bettingDisabled}
+            >
+              <span className="dt-btn-tie-eq">=</span>
+              <span className="dt-btn-label">TIE</span>
+              <span className="dt-btn-mult">8x</span>
+              <span className="dt-btn-count">{betCounts?.tie || 0} bets</span>
+            </button>
+
+            {/* TIGER */}
+            <button
+              className={`dt-bet-btn dt-bet-tiger ${selectedBet === 'tiger' ? 'dt-bet-btn-selected' : ''}`}
+              onClick={() => { setSelectedBet('tiger'); placeBet('tiger'); }}
+              disabled={bettingDisabled}
+            >
+              <span className="dt-btn-emoji">{'\uD83D\uDC2F'}</span>
+              <span className="dt-btn-label">TIGER</span>
+              <span className="dt-btn-mult">1.94x</span>
+              <span className="dt-btn-count">{betCounts?.tiger || 0} bets</span>
+            </button>
+          </div>
+
+          {/* Bet amount display */}
+          {!hasBet && status === 'betting' && (
+            <div className="dt-stake-display">
+              Placing <strong>{formatCurrency(stake)}</strong> on your chosen side
+            </div>
+          )}
+
+          {status !== 'betting' && !hasBet && (
+            <div className="dt-stake-display">
+              {status === 'locked' ? 'Betting closed for this round' : 'Wait for next round to place a bet'}
+            </div>
+          )}
         </div>
-      )}
+      </div>
 
       {/* ====== GAME HISTORY ====== */}
-      {history.length > 0 && (
+      {history && history.length > 0 && (
         <div className="dt-history-section">
           <div className="dt-history-label">Recent Results</div>
           <div className="dt-history-row">
             {history.map((r, i) => (
-              <HistoryBadge key={i} result={r} />
+              <HistoryBadge key={i} result={r.result || r} />
             ))}
           </div>
         </div>
@@ -493,7 +590,85 @@ export default function DragonTigerGamePage() {
 
       {/* ====== INLINE STYLES ====== */}
       <style>{`
-        /* ===== SETUP / PREVIEW ===== */
+        /* ===== LIVE HEADER ===== */
+        .dt-live-header {
+          background: var(--bg-card);
+          border: 1px solid var(--border-color);
+          border-radius: var(--radius-lg);
+          padding: 1.25rem;
+          display: flex;
+          align-items: center;
+          gap: 1.25rem;
+          margin-bottom: 0;
+        }
+
+        .dt-live-header-info {
+          display: flex;
+          flex-direction: column;
+          gap: 0.35rem;
+        }
+
+        .dt-round-number {
+          font-size: 1.25rem;
+          font-weight: 900;
+          color: var(--text-primary);
+          font-family: var(--font-mono);
+        }
+
+        .dt-total-bets {
+          font-size: 0.78rem;
+          color: var(--text-muted);
+          font-weight: 600;
+        }
+
+        /* ===== CIRCULAR TIMER ===== */
+        .dt-circular-timer {
+          position: relative;
+          width: 120px;
+          height: 120px;
+          flex-shrink: 0;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+
+        .dt-timer-center {
+          position: absolute;
+          inset: 0;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          flex-direction: column;
+        }
+
+        .dt-timer-number {
+          font-size: 2.2rem;
+          font-weight: 900;
+          font-family: var(--font-mono);
+          line-height: 1;
+        }
+
+        .dt-timer-emoji {
+          font-size: 2rem;
+          line-height: 1;
+        }
+
+        @keyframes dtRevealSpin {
+          from { transform: rotate(0deg); }
+          to   { transform: rotate(360deg); }
+        }
+
+        @keyframes dtTimerPulse {
+          0%, 100% { transform: scale(1); }
+          50%      { transform: scale(1.06); }
+        }
+
+        @keyframes dtStatusPulse {
+          0%, 100% { opacity: 1; transform: scale(1); }
+          50%      { opacity: 0.4; transform: scale(0.8); }
+        }
+
+        /* ===== SETUP / CONTROLS ===== */
         .dt-setup {
           background: var(--bg-card);
           border: 1px solid var(--border-color);
@@ -501,132 +676,22 @@ export default function DragonTigerGamePage() {
           overflow: hidden;
         }
 
-        .dt-preview {
-          position: relative;
-          min-height: 190px;
-          background: linear-gradient(145deg, #0d1018, #13172a);
-          border-bottom: 1px solid var(--border-color);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          overflow: hidden;
-        }
-
-        /* Ambient glow blobs */
-        .dt-preview::before {
-          content: '';
-          position: absolute;
-          left: 12%;
-          top: 50%;
-          transform: translateY(-50%);
-          width: 140px;
-          height: 140px;
-          background: radial-gradient(circle, rgba(192,57,43,0.22) 0%, transparent 70%);
-          border-radius: 50%;
-          pointer-events: none;
-        }
-        .dt-preview::after {
-          content: '';
-          position: absolute;
-          right: 12%;
-          top: 50%;
-          transform: translateY(-50%);
-          width: 140px;
-          height: 140px;
-          background: radial-gradient(circle, rgba(211,84,0,0.22) 0%, transparent 70%);
-          border-radius: 50%;
-          pointer-events: none;
-        }
-
-        .dt-preview-fighters {
-          display: flex;
-          align-items: center;
-          gap: 1.5rem;
-          opacity: 0.28;
-          z-index: 1;
-        }
-
-        .dt-preview-fighter {
-          width: 90px;
-          height: 90px;
-          border-radius: 50%;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          animation: dt-float 3s ease-in-out infinite;
-        }
-
-        .dt-fighter-dragon {
-          background: radial-gradient(circle, rgba(192,57,43,0.4), rgba(192,57,43,0.1));
-          border: 2px solid rgba(192,57,43,0.4);
-          animation-delay: 0s;
-        }
-
-        .dt-fighter-tiger {
-          background: radial-gradient(circle, rgba(211,84,0,0.4), rgba(211,84,0,0.1));
-          border: 2px solid rgba(211,84,0,0.4);
-          animation-delay: -1.5s;
-        }
-
-        .dt-fighter-emoji {
-          font-size: 2.8rem;
-          line-height: 1;
-        }
-
-        .dt-preview-vs-circle {
-          font-size: 1.1rem;
-          font-weight: 900;
-          color: rgba(255,215,0,0.5);
-          letter-spacing: 2px;
-        }
-
-        @keyframes dt-float {
-          0%, 100% { transform: translateY(0px); }
-          50% { transform: translateY(-8px); }
-        }
-
-        .dt-preview-overlay {
-          position: absolute;
-          inset: 0;
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          justify-content: center;
-          background: radial-gradient(ellipse at center, rgba(10,12,20,0.3), rgba(10,12,20,0.78));
-          z-index: 2;
-        }
-
-        .dt-preview-title {
-          font-size: 2.5rem;
-          font-weight: 900;
-          letter-spacing: 5px;
-          background: linear-gradient(135deg, #ffd700, #f39c12, #ffd700);
-          background-size: 200% auto;
-          -webkit-background-clip: text;
-          -webkit-text-fill-color: transparent;
-          animation: dt-shimmer 3s linear infinite;
-          margin-bottom: 0.4rem;
-          white-space: nowrap;
-        }
-
-        @keyframes dt-shimmer {
-          0% { background-position: 0% center; }
-          100% { background-position: 200% center; }
-        }
-
-        .dt-preview-subtitle {
-          font-size: 0.9rem;
-          color: rgba(255,255,255,0.55);
-          font-weight: 600;
-          letter-spacing: 0.5px;
-        }
-
-        /* ===== SETUP CONTROLS ===== */
         .dt-setup-controls {
           padding: 1.25rem;
           display: flex;
           flex-direction: column;
           gap: 1.1rem;
+        }
+
+        .dt-my-bet-indicator {
+          text-align: center;
+          font-size: 0.85rem;
+          color: #ffd700;
+          font-weight: 700;
+          padding: 0.5rem 0.75rem;
+          background: rgba(255,215,0,0.08);
+          border: 1px solid rgba(255,215,0,0.2);
+          border-radius: var(--radius);
         }
 
         /* ===== 3 BET BUTTONS ===== */
@@ -673,7 +738,13 @@ export default function DragonTigerGamePage() {
           transform: scale(0.97);
         }
 
-        /* Dragon button — red/fire */
+        .dt-bet-btn-selected {
+          border-color: #ffd700 !important;
+          box-shadow: 0 0 0 3px rgba(255,215,0,0.3), 0 4px 20px rgba(255,215,0,0.25) !important;
+          transform: scale(1.04);
+        }
+
+        /* Dragon button */
         .dt-bet-dragon {
           background: linear-gradient(145deg, #c0392b, #e74c3c);
           border-color: rgba(255,100,80,0.35);
@@ -686,7 +757,7 @@ export default function DragonTigerGamePage() {
           box-shadow: 0 8px 24px rgba(192,57,43,0.5);
         }
 
-        /* Tie button — gold, smaller middle */
+        /* Tie button */
         .dt-bet-tie {
           background: linear-gradient(145deg, #b8860b, #d4a017);
           border-color: rgba(255,215,0,0.35);
@@ -700,7 +771,7 @@ export default function DragonTigerGamePage() {
           box-shadow: 0 8px 20px rgba(212,160,23,0.45);
         }
 
-        /* Tiger button — orange */
+        /* Tiger button */
         .dt-bet-tiger {
           background: linear-gradient(145deg, #d35400, #e67e22);
           border-color: rgba(255,140,50,0.35);
@@ -737,6 +808,13 @@ export default function DragonTigerGamePage() {
           padding: 1px 6px;
           border-radius: 4px;
         }
+        .dt-btn-count {
+          font-size: 0.65rem;
+          font-weight: 600;
+          opacity: 0.7;
+          font-family: var(--font-mono);
+          margin-top: 2px;
+        }
 
         .dt-stake-display {
           text-align: center;
@@ -747,7 +825,7 @@ export default function DragonTigerGamePage() {
           color: var(--accent-gold);
         }
 
-        /* ===== GAME AREA (dealing + result) ===== */
+        /* ===== GAME AREA ===== */
         .dt-game-area {
           background: var(--bg-card);
           border: 1px solid var(--border-color);
@@ -758,36 +836,17 @@ export default function DragonTigerGamePage() {
           gap: 1.1rem;
         }
 
-        /* ===== DEALING ANIMATION ===== */
-        .dt-dealing-banner {
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          gap: 0.75rem;
-          font-size: 0.9rem;
+        /* ===== LOCKED BANNER ===== */
+        .dt-locked-banner {
+          text-align: center;
+          font-size: 0.85rem;
           font-weight: 700;
-          color: var(--text-muted);
+          color: #ff8c00;
+          padding: 0.6rem;
+          background: rgba(255,140,0,0.08);
+          border: 1px solid rgba(255,140,0,0.2);
+          border-radius: var(--radius);
           letter-spacing: 0.5px;
-          padding: 0.5rem;
-        }
-
-        .dt-dealing-dots {
-          display: flex;
-          gap: 5px;
-        }
-        .dt-dealing-dots span {
-          width: 7px;
-          height: 7px;
-          border-radius: 50%;
-          background: var(--accent-gold);
-          animation: dt-dot-pulse 1.2s ease-in-out infinite;
-        }
-        .dt-dealing-dots span:nth-child(2) { animation-delay: 0.2s; }
-        .dt-dealing-dots span:nth-child(3) { animation-delay: 0.4s; }
-
-        @keyframes dt-dot-pulse {
-          0%, 80%, 100% { opacity: 0.25; transform: scale(0.85); }
-          40% { opacity: 1; transform: scale(1.15); }
         }
 
         /* ===== CARD TABLE ===== */
@@ -839,22 +898,6 @@ export default function DragonTigerGamePage() {
           display: flex;
           justify-content: center;
           perspective: 900px;
-        }
-
-        /* Dealing slide-in animations */
-        .dt-card-dealing {
-          animation: dt-deal-left 0.5s cubic-bezier(0.23, 1, 0.32, 1) both;
-        }
-        .dt-card-dealing-right {
-          animation: dt-deal-right 0.5s cubic-bezier(0.23, 1, 0.32, 1) both;
-        }
-        @keyframes dt-deal-left {
-          from { opacity: 0; transform: translateX(-40px) scale(0.85); }
-          to   { opacity: 1; transform: translateX(0) scale(1); }
-        }
-        @keyframes dt-deal-right {
-          from { opacity: 0; transform: translateX(40px) scale(0.85); }
-          to   { opacity: 1; transform: translateX(0) scale(1); }
         }
 
         /* Card flip-in when revealing */
@@ -918,6 +961,10 @@ export default function DragonTigerGamePage() {
           background: rgba(220,38,38,0.08);
           border: 1px solid rgba(220,38,38,0.25);
           animation: dt-lose-shake 0.5s ease-in-out;
+        }
+        .dt-result-neutral {
+          background: rgba(255,215,0,0.06);
+          border: 1px solid rgba(255,215,0,0.2);
         }
 
         @keyframes dt-win-pulse {
@@ -987,12 +1034,26 @@ export default function DragonTigerGamePage() {
 
         /* ===== RESPONSIVE ===== */
         @media (max-width: 480px) {
-          .dt-preview-title {
-            font-size: 1.7rem;
-            letter-spacing: 3px;
+          .dt-live-header {
+            flex-direction: column;
+            align-items: center;
+            text-align: center;
+            gap: 0.75rem;
+            padding: 1rem;
           }
-          .dt-preview-subtitle {
-            font-size: 0.8rem;
+          .dt-live-header-info {
+            align-items: center;
+          }
+          .dt-circular-timer {
+            width: 100px;
+            height: 100px;
+          }
+          .dt-circular-timer svg {
+            width: 100px;
+            height: 100px;
+          }
+          .dt-timer-number {
+            font-size: 1.8rem;
           }
           .dt-bet-buttons {
             grid-template-columns: 1fr 0.65fr 1fr;

@@ -53,4 +53,29 @@ function play(stake, bet) {
   };
 }
 
-module.exports = { play };
+function generateRound() {
+  const seed = crypto.randomBytes(16).toString('hex');
+  const jokerHash = crypto.createHmac('sha256', seed).update('joker').digest('hex');
+  const joker = makeCard(parseInt(jokerHash.slice(0, 8), 16) % 52);
+
+  const andarCards = [];
+  const baharCards = [];
+  let result = null;
+
+  for (let i = 0; i < 52 && !result; i++) {
+    const hash = crypto.createHmac('sha256', seed).update(`deal_${i}`).digest('hex');
+    const card = makeCard(parseInt(hash.slice(0, 8), 16) % 52);
+    const isAndar = i % 2 === 0;
+    if (isAndar) andarCards.push(card);
+    else baharCards.push(card);
+    if (card.value === joker.value) {
+      result = isAndar ? 'andar' : 'bahar';
+    }
+  }
+
+  if (!result) result = 'andar';
+
+  return { joker, andarCards, baharCards, result, seed };
+}
+
+module.exports = { play, generateRound };

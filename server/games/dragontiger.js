@@ -41,4 +41,17 @@ function play(stake, bet) {
   };
 }
 
-module.exports = { play };
+function generateRound() {
+  const seed = crypto.randomBytes(16).toString('hex');
+  const dragon = drawCard(seed, 0);
+  const tiger = drawCard(seed, 1);
+
+  let result;
+  if (dragon.numericValue > tiger.numericValue) result = 'dragon';
+  else if (tiger.numericValue > dragon.numericValue) result = 'tiger';
+  else result = 'tie';
+
+  return { dragon, tiger, result, seed };
+}
+
+module.exports = { play, generateRound };

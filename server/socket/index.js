@@ -2,13 +2,64 @@ const { verifyToken } = require('../utils/jwt');
 const db = require('../config/database');
 const { CrashGameManager } = require('../games/crash');
 const { ColorPredictionManager } = require('../games/colorPrediction');
+const { LiveGameManager } = require('../games/LiveGameManager');
+const { generateRound: dtGenerateRound } = require('../games/dragontiger');
+const { generateRound: l7GenerateRound } = require('../games/lucky7');
+const { generateRound: abGenerateRound } = require('../games/andarbahar');
 
 let crashManager = null;
 let colorManager = null;
+let dtManager = null;
+let l7Manager = null;
+let abManager = null;
+
+function createPayoutHandler(io) {
+  return (userId, amount, description) => {
+    const user = db.prepare('SELECT balance FROM users WHERE id = ?').get(userId);
+    if (!user) return;
+    const newBalance = Math.round((user.balance + amount) * 100) / 100;
+    db.prepare('UPDATE users SET balance = ? WHERE id = ?').run(newBalance, userId);
+    db.prepare(`INSERT INTO transactions (user_id, type, amount, balance_after, description)
+      VALUES (?, 'bet_won', ?, ?, ?)`).run(userId, amount, newBalance, description);
+    io.to(`user:${userId}`).emit('wallet:balance_update', { balance: newBalance });
+  };
+}
 
 function setupSocket(io) {
   crashManager = new CrashGameManager(io);
   colorManager = new ColorPredictionManager(io);
+
+  const payoutHandler = createPayoutHandler(io);
+
+  dtManager = new LiveGameManager(io, {
+    gameId: 'dragontiger',
+    roundDuration: 30,
+    validBets: ['dragon', 'tiger', 'tie'],
+    payouts: { dragon: 1.94, tiger: 1.94, tie: 8 },
+    generateRound: dtGenerateRound,
+    revealDelay: 2000,
+    resultDisplayTime: 5000,
+  }, payoutHandler);
+
+  l7Manager = new LiveGameManager(io, {
+    gameId: 'lucky7',
+    roundDuration: 30,
+    validBets: ['under', 'lucky7', 'over'],
+    payouts: { under: 1.94, lucky7: 11, over: 1.94 },
+    generateRound: l7GenerateRound,
+    revealDelay: 2000,
+    resultDisplayTime: 5000,
+  }, payoutHandler);
+
+  abManager = new LiveGameManager(io, {
+    gameId: 'andarbahar',
+    roundDuration: 30,
+    validBets: ['andar', 'bahar'],
+    payouts: { andar: 1.9, bahar: 1.9 },
+    generateRound: abGenerateRound,
+    revealDelay: 2000,
+    resultDisplayTime: 8000,
+  }, payoutHandler);
 
   // Auto-cashout handler for Aviator/Crash game
   crashManager.setAutoCashoutHandler((socketId, bet, multiplier) => {
@@ -134,6 +185,43 @@ function setupSocket(io) {
       }
     });
 
+    // === LIVE CARD GAMES (Dragon Tiger, Lucky 7, Andar Bahar) ===
+    function registerLiveGame(manager, gameId) {
+      socket.on(`live:${gameId}:join`, () => {
+        socket.join(gameId);
+        socket.emit(`live:${gameId}:state`, manager.getState());
+      });
+
+      socket.on(`live:${gameId}:leave`, () => {
+        socket.leave(gameId);
+      });
+
+      socket.on(`live:${gameId}:place_bet`, ({ bet, amount }, callback) => {
+        if (!socket.user) return callback?.({ error: 'Not authenticated' });
+        try {
+          const user = db.prepare('SELECT balance FROM users WHERE id = ?').get(socket.user.id);
+          if (user.balance < amount) return callback?.({ error: 'Insufficient balance' });
+
+          const newBalance = Math.round((user.balance - amount) * 100) / 100;
+          db.prepare('UPDATE users SET balance = ? WHERE id = ?').run(newBalance, socket.user.id);
+          db.prepare(`
+            INSERT INTO transactions (user_id, type, amount, balance_after, description)
+            VALUES (?, 'bet_placed', ?, ?, ?)
+          `).run(socket.user.id, -amount, newBalance, `${gameId}: ${bet}`);
+
+          manager.placeBet(socket.id, socket.user.id, socket.user.username, bet, amount);
+          io.to(`user:${socket.user.id}`).emit('wallet:balance_update', { balance: newBalance });
+          callback?.({ success: true, balance: newBalance });
+        } catch (err) {
+          callback?.({ error: err.message });
+        }
+      });
+    }
+
+    registerLiveGame(dtManager, 'dragontiger');
+    registerLiveGame(l7Manager, 'lucky7');
+    registerLiveGame(abManager, 'andarbahar');
+
     // === MATCH SUBSCRIPTIONS ===
     socket.on('subscribe:match', ({ matchId }) => {
       socket.join(`match:${matchId}`);
@@ -174,12 +262,15 @@ function setupSocket(io) {
   // Start game loops
   crashManager.start();
   colorManager.start();
+  dtManager.start();
+  l7Manager.start();
+  abManager.start();
 
   // Wire up match sync to broadcast via socket
   const { setSocketIO } = require('../services/matchSyncService');
   setSocketIO(io);
 
-  console.log('Socket.io initialized, Crash & Color Prediction games started');
+  console.log('Socket.io initialized, all game loops started');
 }
 
 module.exports = { setupSocket, getCrashManager: () => crashManager, getColorManager: () => colorManager };

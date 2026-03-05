@@ -1,19 +1,18 @@
-import { useState, useContext, useCallback } from 'react';
-import { AuthContext } from '../context/AuthContext';
-import { playLucky7 } from '../api/casino';
+import { useMemo } from 'react';
+import { useLiveGame } from '../hooks/useLiveGame';
 import { formatCurrency, BET_AMOUNTS } from '../utils/constants';
-import toast from 'react-hot-toast';
 import GameRulesModal from '../components/common/GameRulesModal';
 import './CasinoGame.css';
 
 const L7_RULES = [
-  'Place your bet on Under 7, Lucky 7, or Over 7.',
-  'One card is drawn from the deck.',
+  'Each round lasts 30 seconds with a countdown timer.',
+  'Place your bet on Under 7, Lucky 7, or Over 7 during the betting phase.',
+  'Bets are locked when the timer reaches 0.',
+  'One card is drawn from the deck after betting closes.',
   'Ace counts as 1. Jack=11, Queen=12, King=13.',
-  'Under 7: card value is 1-6 (A to 6).',
-  'Lucky 7: card value is exactly 7.',
-  'Over 7: card value is 8-13 (8 to K).',
-  'Under/Over pays 1.94x. Lucky 7 pays 11x!',
+  'Under 7: card value is 1-6 (A to 6). Pays 1.94x.',
+  'Lucky 7: card value is exactly 7. Pays 11x!',
+  'Over 7: card value is 8-13 (8 to K). Pays 1.94x.',
 ];
 
 const L7_PAYOUTS = [
@@ -36,6 +35,8 @@ const SUIT_COLORS = {
   clubs: '#1a1a2e',
   spades: '#1a1a2e',
 };
+
+const MAX_SECONDS = 30;
 
 /* ── Playing Card Component ─────────────────────────────────── */
 function PlayingCard({ card, faceDown = false, flipping = false }) {
@@ -176,73 +177,120 @@ function HistoryBadge({ result }) {
   );
 }
 
+/* ── Circular Timer (SVG) ───────────────────────────────────── */
+function CircularTimer({ secondsLeft, maxSeconds, status }) {
+  const radius = 70;
+  const stroke = 8;
+  const normalizedRadius = radius - stroke / 2;
+  const circumference = 2 * Math.PI * normalizedRadius;
+
+  const fraction = maxSeconds > 0 ? secondsLeft / maxSeconds : 0;
+  const strokeDashoffset = circumference * (1 - fraction);
+
+  const isRevealing = status === 'revealing';
+  const timerColor = useMemo(() => {
+    if (status === 'result') return '#ffd700';
+    if (isRevealing) return '#a855f7';
+    if (secondsLeft > 15) return '#00e701';
+    if (secondsLeft > 7) return '#ffb800';
+    return '#ff4444';
+  }, [secondsLeft, status, isRevealing]);
+
+  const isPulsing = secondsLeft <= 5 && status === 'betting';
+
+  return (
+    <div
+      className="l7-circular-timer"
+      style={{
+        animation: isRevealing
+          ? 'l7RevealSpin 0.6s linear infinite'
+          : isPulsing ? 'l7TimerPulse 1s ease-in-out infinite' : 'none'
+      }}
+    >
+      <svg width={radius * 2} height={radius * 2} viewBox={`0 0 ${radius * 2} ${radius * 2}`}>
+        <circle
+          cx={radius}
+          cy={radius}
+          r={normalizedRadius}
+          fill="none"
+          stroke="rgba(255,255,255,0.08)"
+          strokeWidth={stroke}
+        />
+        <circle
+          cx={radius}
+          cy={radius}
+          r={normalizedRadius}
+          fill="none"
+          stroke={timerColor}
+          strokeWidth={stroke}
+          strokeLinecap="round"
+          strokeDasharray={circumference}
+          strokeDashoffset={strokeDashoffset}
+          transform={`rotate(-90 ${radius} ${radius})`}
+          style={{
+            transition: 'stroke-dashoffset 0.95s linear, stroke 0.5s ease',
+            filter: `drop-shadow(0 0 6px ${timerColor}80)`,
+          }}
+        />
+      </svg>
+      <div className="l7-timer-center" style={{ color: timerColor }}>
+        {status === 'result' ? (
+          <span className="l7-timer-emoji">&#127183;</span>
+        ) : isRevealing ? (
+          <span className="l7-timer-emoji" style={{ fontSize: '2rem' }}>&#127183;</span>
+        ) : (
+          <span className="l7-timer-number">{secondsLeft}</span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ── Status Badge ───────────────────────────────────────────── */
+function StatusBadge({ status }) {
+  const config = {
+    betting:   { text: 'BETTING OPEN',  bg: 'rgba(0,231,1,0.15)',    color: '#00e701', border: '#00e701' },
+    locked:    { text: 'BETS LOCKED',   bg: 'rgba(255,68,68,0.15)',  color: '#ff4444', border: '#ff4444' },
+    revealing: { text: 'REVEALING...',  bg: 'rgba(168,85,247,0.15)', color: '#a855f7', border: '#a855f7' },
+    result:    { text: 'RESULT',        bg: 'rgba(255,215,0,0.15)',  color: '#ffd700', border: '#ffd700' },
+  };
+  const c = config[status] || config.betting;
+
+  return (
+    <div
+      className="l7-status-badge"
+      style={{ background: c.bg, color: c.color, border: `1px solid ${c.border}` }}
+    >
+      <span className="l7-status-dot" style={{ background: c.color }} />
+      {c.text}
+    </div>
+  );
+}
+
 /* ── Main Page ──────────────────────────────────────────────── */
 export default function Lucky7GamePage() {
-  const { user, updateBalance } = useContext(AuthContext);
-  const [stake, setStake] = useState(BET_AMOUNTS[0]);
-  const [selectedBet, setSelectedBet] = useState(null); // 'under' | 'lucky7' | 'over'
-  const [result, setResult] = useState(null);           // API result object
-  const [loading, setLoading] = useState(false);
-  const [dealing, setDealing] = useState(false);        // card flip animation phase
-  const [history, setHistory] = useState([]);            // array of result strings
+  const {
+    gameState,
+    roundResult,
+    selectedBet, setSelectedBet,
+    stake, setStake,
+    hasBet,
+    myBetChoice,
+    placeBet,
+    isMyWin, myPayout,
+  } = useLiveGame('lucky7');
 
-  const isLucky7Win = result && result.won && result.result === 'lucky7';
-  const isRegularWin = result && result.won && result.result !== 'lucky7';
-  const isLoss = result && !result.won;
+  const status = gameState.status;
+  const isBettingOpen = status === 'betting';
+  const isResult = status === 'result';
+  const isRevealing = status === 'revealing';
+  const buttonsDisabled = hasBet || !isBettingOpen;
 
-  const handlePlay = useCallback(async () => {
-    if (!user) return toast.error('Please login first');
-    if (!selectedBet) return toast.error('Select Under 7, Lucky 7, or Over 7 first');
-    if (stake > (user?.balance || 0)) return toast.error('Insufficient balance');
+  const isLucky7Win = isResult && isMyWin && roundResult?.result === 'lucky7';
+  const isRegularWin = isResult && isMyWin && roundResult?.result !== 'lucky7';
+  const isLoss = isResult && hasBet && !isMyWin;
 
-    setLoading(true);
-    setResult(null);
-    setDealing(true);   // show face-down card spinning
-
-    try {
-      // Give the spin animation a moment to show before the API resolves
-      const [res] = await Promise.all([
-        playLucky7(stake, selectedBet),
-        new Promise(resolve => setTimeout(resolve, 800)),
-      ]);
-
-      const data = res.data || res;
-      const game = data.gameResult || data;
-      setDealing(false);
-
-      // Brief pause at edge-on moment before flip-in
-      await new Promise(resolve => setTimeout(resolve, 120));
-
-      setResult(game);
-      setHistory(prev => [game.result, ...prev].slice(0, 8));
-
-      if (data.balance != null) updateBalance(data.balance);
-
-      if (game.won) {
-        if (game.result === 'lucky7') {
-          toast.success(`LUCKY 7! You won ${formatCurrency(data.payout)}!`, { duration: 4000 });
-        } else {
-          toast.success(`You won ${formatCurrency(data.payout)}!`);
-        }
-      } else {
-        toast.error('Better luck next time!');
-      }
-    } catch (err) {
-      setDealing(false);
-      toast.error(err.response?.data?.error || 'Failed to play');
-    }
-
-    setLoading(false);
-  }, [user, stake, selectedBet, updateBalance]);
-
-  const handlePlayAgain = () => {
-    setResult(null);
-    setDealing(false);
-    setSelectedBet(null);
-  };
-
-  const showCard = dealing || result;
-  const cardPhase = dealing ? 'facedown' : result ? 'revealed' : null;
+  const showRevealedCard = (status === 'revealing' || isResult) && roundResult?.card;
 
   return (
     <div className="casino-game-page" style={{ maxWidth: 600 }}>
@@ -255,341 +303,435 @@ export default function Lucky7GamePage() {
         payouts={L7_PAYOUTS}
       />
 
-      {/* ====== PREVIEW SECTION ====== */}
-      {!result && !dealing && (
-        <div className="l7-setup">
-          <div className="l7-preview">
-            {/* Faded cards left: A-6 */}
-            <div className="l7-preview-side l7-preview-left">
-              {['A','2','3','4','5','6'].map((v, i) => (
-                <div
-                  key={v}
-                  className="l7-preview-mini-card"
-                  style={{ opacity: 0.18 + i * 0.04, transform: `rotate(${-15 + i * 4}deg) translateY(${Math.abs(i - 2.5) * 4}px)` }}
-                >
-                  <span style={{ fontSize: '0.95rem', fontWeight: 800, color: '#1a1a2e' }}>{v}</span>
-                </div>
-              ))}
-            </div>
+      {/* Round info + status */}
+      <div className="l7-round-row">
+        <span className="l7-round-number">
+          Round #{gameState.roundId || '--'}
+        </span>
+        <StatusBadge status={status} />
+      </div>
 
-            {/* Center golden 7 */}
-            <div className="l7-preview-center">
-              <div className="l7-golden-seven">7</div>
-              <div className="l7-preview-title">LUCKY 7</div>
-              <div className="l7-preview-subtitle">Under, Lucky 7, or Over?</div>
-            </div>
+      {/* Main game card */}
+      <div className={`l7-game-area${isLucky7Win ? ' l7-lucky-win-bg' : ''}`}>
 
-            {/* Faded card right: K */}
-            <div className="l7-preview-side l7-preview-right">
-              {['8','9','10','J','Q','K'].map((v, i) => (
-                <div
-                  key={v}
-                  className="l7-preview-mini-card"
-                  style={{ opacity: 0.35 - i * 0.04, transform: `rotate(${4 + i * 4}deg) translateY(${Math.abs(i - 2.5) * 4}px)` }}
-                >
-                  <span style={{ fontSize: '0.9rem', fontWeight: 800, color: '#dc2626' }}>{v}</span>
-                </div>
-              ))}
-            </div>
-          </div>
+        {/* Circular Timer at top center */}
+        <CircularTimer
+          secondsLeft={gameState.secondsLeft}
+          maxSeconds={MAX_SECONDS}
+          status={status}
+        />
 
-          {/* Stake Selector */}
-          <div className="l7-controls-wrap">
-            <div className="stake-selector">
-              <label>Bet Amount</label>
-              <div className="stake-buttons">
-                {BET_AMOUNTS.map(amt => (
-                  <button
-                    key={amt}
-                    className={`btn btn-sm ${stake === amt ? 'btn-primary' : 'btn-outline'}`}
-                    onClick={() => setStake(amt)}
-                  >
-                    {formatCurrency(amt)}
-                  </button>
-                ))}
+        {/* Card Area */}
+        <div className="l7-card-stage">
+          {/* Face-down during betting/locked */}
+          {(isBettingOpen || status === 'locked') && !roundResult && (
+            <PlayingCard faceDown={true} />
+          )}
+
+          {/* Flipping animation during revealing */}
+          {isRevealing && roundResult?.card && (
+            <div className="l7-card-reveal-wrap">
+              <PlayingCard card={roundResult.card} flipping={true} />
+              <div className="l7-card-label-below">
+                {roundResult.card.display}
+                {' '}
+                <span style={{ color: 'var(--text-muted)', fontSize: '0.8em' }}>
+                  (value: {roundResult.card.numericValue})
+                </span>
               </div>
             </div>
+          )}
 
-            {/* 3 Bet Buttons */}
-            <div className="l7-bet-grid">
-              {/* UNDER 7 */}
-              <button
-                className={`l7-bet-btn l7-bet-under${selectedBet === 'under' ? ' l7-bet-selected' : ''}`}
-                onClick={() => setSelectedBet(prev => prev === 'under' ? null : 'under')}
-              >
-                <div className="l7-bet-symbol">&lt; 7</div>
-                <div className="l7-bet-label">UNDER 7</div>
-                <div className="l7-bet-cards">A &middot; 2 &middot; 3 &middot; 4 &middot; 5 &middot; 6</div>
-                <div className="l7-bet-pays">Pays 1.94x</div>
-                <div className="l7-bet-odds">6/13 chance</div>
-              </button>
-
-              {/* LUCKY 7 */}
-              <button
-                className={`l7-bet-btn l7-bet-lucky${selectedBet === 'lucky7' ? ' l7-bet-selected' : ''}`}
-                onClick={() => setSelectedBet(prev => prev === 'lucky7' ? null : 'lucky7')}
-              >
-                <div className="l7-lucky-sparkle-row">
-                  <span className="l7-sparkle">&#10024;</span>
-                  <div className="l7-lucky-num">7</div>
-                  <span className="l7-sparkle">&#10024;</span>
-                </div>
-                <div className="l7-bet-label">LUCKY 7</div>
-                <div className="l7-bet-pays l7-pays-big">Pays 11x</div>
-                <div className="l7-bet-odds">1/13 chance</div>
-              </button>
-
-              {/* OVER 7 */}
-              <button
-                className={`l7-bet-btn l7-bet-over${selectedBet === 'over' ? ' l7-bet-selected' : ''}`}
-                onClick={() => setSelectedBet(prev => prev === 'over' ? null : 'over')}
-              >
-                <div className="l7-bet-symbol">&gt; 7</div>
-                <div className="l7-bet-label">OVER 7</div>
-                <div className="l7-bet-cards">8 &middot; 9 &middot; 10 &middot; J &middot; Q &middot; K</div>
-                <div className="l7-bet-pays">Pays 1.94x</div>
-                <div className="l7-bet-odds">6/13 chance</div>
-              </button>
+          {/* Revealed card during result */}
+          {isResult && roundResult?.card && (
+            <div className="l7-card-reveal-wrap">
+              <PlayingCard card={roundResult.card} />
+              <div className="l7-card-label-below">
+                {roundResult.card.display}
+                {' '}
+                <span style={{ color: 'var(--text-muted)', fontSize: '0.8em' }}>
+                  (value: {roundResult.card.numericValue})
+                </span>
+              </div>
             </div>
+          )}
+        </div>
 
-            {/* PLAY Button */}
+        {/* Result Banner */}
+        {isResult && hasBet && (
+          <div className={`l7-result-banner${isLucky7Win ? ' l7-banner-lucky' : isRegularWin ? ' l7-banner-win' : ' l7-banner-loss'}`}>
+            {isLucky7Win && (
+              <>
+                <div className="l7-sparkles-row">
+                  <span>&#10024;</span><span>&#10024;</span><span>&#10024;</span>
+                  <span>&#10024;</span><span>&#10024;</span>
+                </div>
+                <div className="l7-result-icon">&#127881;</div>
+                <div className="l7-result-title">LUCKY 7!</div>
+                <div className="l7-result-payout">+{formatCurrency(myPayout)}</div>
+                <div className="l7-result-sub">11x multiplier</div>
+                <div className="l7-sparkles-row">
+                  <span>&#10024;</span><span>&#10024;</span><span>&#10024;</span>
+                  <span>&#10024;</span><span>&#10024;</span>
+                </div>
+              </>
+            )}
+            {isRegularWin && (
+              <>
+                <div className="l7-result-icon">&#9989;</div>
+                <div className="l7-result-title">You Won!</div>
+                <div className="l7-result-payout">+{formatCurrency(myPayout)}</div>
+                <div className="l7-result-sub">1.94x &mdash; {roundResult.result === 'under' ? 'Under 7' : 'Over 7'}</div>
+              </>
+            )}
+            {isLoss && (
+              <>
+                <div className="l7-result-icon">&#10060;</div>
+                <div className="l7-result-title">No Luck</div>
+                <div className="l7-result-sub">
+                  Card was {roundResult.card?.display} &mdash; That&apos;s {roundResult.result === 'under' ? 'Under' : roundResult.result === 'lucky7' ? 'Lucky 7' : 'Over'} 7.
+                  You bet on {myBetChoice === 'under' ? 'Under 7' : myBetChoice === 'lucky7' ? 'Lucky 7' : 'Over 7'}.
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
+        {/* Result info for non-bettors */}
+        {isResult && !hasBet && roundResult && (
+          <div className="l7-result-banner l7-banner-neutral">
+            <div className="l7-result-sub">
+              Result: {roundResult.card?.display} &mdash; {roundResult.result === 'under' ? 'Under 7' : roundResult.result === 'lucky7' ? 'Lucky 7' : 'Over 7'}
+            </div>
+          </div>
+        )}
+
+        {/* Bet Buttons */}
+        <div className="l7-bet-grid">
+          {/* UNDER 7 */}
+          <button
+            className={`l7-bet-btn l7-bet-under${selectedBet === 'under' ? ' l7-bet-selected' : ''}`}
+            onClick={() => setSelectedBet(selectedBet === 'under' ? null : 'under')}
+            disabled={buttonsDisabled}
+          >
+            <div className="l7-bet-symbol">&lt; 7</div>
+            <div className="l7-bet-label">UNDER 7</div>
+            <div className="l7-bet-pays">1.94x</div>
+            <div className="l7-bet-count">{gameState.betCounts?.under ?? 0} bet{(gameState.betCounts?.under ?? 0) !== 1 ? 's' : ''}</div>
+          </button>
+
+          {/* LUCKY 7 */}
+          <button
+            className={`l7-bet-btn l7-bet-lucky${selectedBet === 'lucky7' ? ' l7-bet-selected' : ''}`}
+            onClick={() => setSelectedBet(selectedBet === 'lucky7' ? null : 'lucky7')}
+            disabled={buttonsDisabled}
+          >
+            <div className="l7-lucky-sparkle-row">
+              <span className="l7-sparkle">&#10024;</span>
+              <div className="l7-lucky-num">7</div>
+              <span className="l7-sparkle">&#10024;</span>
+            </div>
+            <div className="l7-bet-label">LUCKY 7</div>
+            <div className="l7-bet-pays l7-pays-big">11x</div>
+            <div className="l7-bet-count">{gameState.betCounts?.lucky7 ?? 0} bet{(gameState.betCounts?.lucky7 ?? 0) !== 1 ? 's' : ''}</div>
+          </button>
+
+          {/* OVER 7 */}
+          <button
+            className={`l7-bet-btn l7-bet-over${selectedBet === 'over' ? ' l7-bet-selected' : ''}`}
+            onClick={() => setSelectedBet(selectedBet === 'over' ? null : 'over')}
+            disabled={buttonsDisabled}
+          >
+            <div className="l7-bet-symbol">&gt; 7</div>
+            <div className="l7-bet-label">OVER 7</div>
+            <div className="l7-bet-pays">1.94x</div>
+            <div className="l7-bet-count">{gameState.betCounts?.over ?? 0} bet{(gameState.betCounts?.over ?? 0) !== 1 ? 's' : ''}</div>
+          </button>
+        </div>
+
+        {/* Stake Selector + Place Bet */}
+        {isBettingOpen && !hasBet && (
+          <div className="l7-bet-controls">
+            <div className="l7-stake-row">
+              {BET_AMOUNTS.map(amt => (
+                <button
+                  key={amt}
+                  className={`l7-stake-btn${stake === amt ? ' l7-stake-btn--active' : ''}`}
+                  onClick={() => setStake(amt)}
+                >
+                  {formatCurrency(amt)}
+                </button>
+              ))}
+            </div>
             <button
-              className={`l7-play-btn${selectedBet ? ' l7-play-ready' : ''}`}
-              onClick={handlePlay}
-              disabled={loading || !selectedBet || !user || stake > (user?.balance || 0)}
+              className={`l7-place-btn${selectedBet ? ' l7-place-ready' : ''}`}
+              onClick={placeBet}
+              disabled={!selectedBet}
             >
-              {loading
-                ? 'Dealing...'
-                : selectedBet
-                  ? `PLAY — ${formatCurrency(stake)}`
-                  : 'SELECT A BET TO PLAY'
-              }
+              {selectedBet
+                ? `PLACE BET - ${formatCurrency(stake)}`
+                : 'SELECT A BET'}
             </button>
           </div>
-        </div>
-      )}
+        )}
 
-      {/* ====== DEALING / RESULT AREA ====== */}
-      {showCard && (
-        <div className={`l7-game-area${isLucky7Win ? ' l7-lucky-win-bg' : ''}`}>
-
-          {/* Result Banner — only shown after reveal */}
-          {result && (
-            <div className={`l7-result-banner${isLucky7Win ? ' l7-banner-lucky' : isRegularWin ? ' l7-banner-win' : ' l7-banner-loss'}`}>
-              {isLucky7Win && (
-                <>
-                  <div className="l7-sparkles-row">
-                    <span>&#10024;</span><span>&#10024;</span><span>&#10024;</span>
-                    <span>&#10024;</span><span>&#10024;</span>
-                  </div>
-                  <div className="l7-result-icon">&#127881;</div>
-                  <div className="l7-result-title">LUCKY 7!</div>
-                  <div className="l7-result-payout">+{formatCurrency(result.payout)}</div>
-                  <div className="l7-result-sub">{result.multiplier}x multiplier</div>
-                  <div className="l7-sparkles-row">
-                    <span>&#10024;</span><span>&#10024;</span><span>&#10024;</span>
-                    <span>&#10024;</span><span>&#10024;</span>
-                  </div>
-                </>
-              )}
-              {isRegularWin && (
-                <>
-                  <div className="l7-result-icon">&#9989;</div>
-                  <div className="l7-result-title">You Won!</div>
-                  <div className="l7-result-payout">+{formatCurrency(result.payout)}</div>
-                  <div className="l7-result-sub">{result.multiplier}x &mdash; {result.result === 'under' ? 'Under 7' : 'Over 7'}</div>
-                </>
-              )}
-              {isLoss && (
-                <>
-                  <div className="l7-result-icon">&#10060;</div>
-                  <div className="l7-result-title">No Luck</div>
-                  <div className="l7-result-sub">
-                    Card was {result.card?.display} &mdash; That&apos;s {result.result === 'under' ? 'Under' : result.result === 'lucky7' ? 'Lucky 7' : 'Over'} 7
-                  </div>
-                </>
-              )}
-            </div>
-          )}
-
-          {/* Dealing label */}
-          {dealing && (
-            <div className="l7-dealing-label">Drawing card...</div>
-          )}
-
-          {/* Card Area */}
-          <div className="l7-card-stage">
-            {cardPhase === 'facedown' && (
-              <div className="l7-card-spin-wrap">
-                <PlayingCard faceDown={true} flipping={true} />
-              </div>
-            )}
-            {cardPhase === 'revealed' && result?.card && (
-              <div className="l7-card-reveal-wrap">
-                <PlayingCard card={result.card} flipping={true} />
-                {result && (
-                  <div className="l7-card-label-below">
-                    {result.card.display}
-                    {' '}
-                    <span style={{ color: 'var(--text-muted)', fontSize: '0.8em' }}>
-                      (value: {result.card.numericValue})
-                    </span>
-                  </div>
-                )}
-              </div>
-            )}
+        {/* Post-bet message */}
+        {hasBet && !isResult && (
+          <div className="l7-message l7-message--bet">
+            Bet placed on {myBetChoice === 'under' ? 'Under 7' : myBetChoice === 'lucky7' ? 'Lucky 7' : 'Over 7'}! Waiting for result...
           </div>
+        )}
 
-          {/* Result detail + Play Again */}
-          {result && (
-            <>
-              <button className="l7-again-btn" onClick={handlePlayAgain}>
-                PLAY AGAIN
-              </button>
-
-              {/* History */}
-              {history.length > 0 && (
-                <div className="l7-history-row">
-                  <div className="l7-history-label">Recent Results</div>
-                  <div className="l7-history-badges">
-                    {history.map((r, i) => (
-                      <HistoryBadge key={i} result={r} />
-                    ))}
-                  </div>
-                </div>
-              )}
-            </>
-          )}
-        </div>
-      )}
-
-      {/* History strip visible on pre-game screen too */}
-      {!showCard && history.length > 0 && (
-        <div className="l7-history-strip">
-          <div className="l7-history-label">Recent Results</div>
-          <div className="l7-history-badges">
-            {history.map((r, i) => (
-              <HistoryBadge key={i} result={r} />
-            ))}
+        {/* Locked message for non-bettors */}
+        {status === 'locked' && !hasBet && (
+          <div className="l7-message l7-message--locked">
+            Betting closed for this round
           </div>
+        )}
+
+        {/* Total bets */}
+        {(gameState.totalBets > 0) && (
+          <div className="l7-total-bets">
+            Total bets this round: {gameState.totalBets}
+          </div>
+        )}
+      </div>
+
+      {/* History Strip */}
+      <div className="l7-history-strip">
+        <div className="l7-history-label">Recent Results</div>
+        <div className="l7-history-badges">
+          {(gameState.history || []).length > 0
+            ? (gameState.history || []).map((h, i) => (
+                <HistoryBadge key={i} result={typeof h === 'string' ? h : h.result} />
+              ))
+            : <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>No rounds yet</span>
+          }
         </div>
-      )}
+      </div>
 
       {/* ────────────────────── CSS ────────────────────── */}
       <style>{`
-        /* ── CSS Custom Properties (mirrors app theme) ── */
-        /* fallback values keep it self-contained */
+        /* ── Round Row ── */
+        .l7-round-row {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          margin-bottom: 1rem;
+        }
+        .l7-round-number {
+          font-size: 0.85rem;
+          color: var(--text-muted, rgba(255,255,255,0.4));
+          font-family: var(--font-mono, monospace);
+          letter-spacing: 0.5px;
+        }
 
-        /* ══ SETUP / PREVIEW ══════════════════════════════ */
-        .l7-setup {
+        /* ── Status Badge ── */
+        .l7-status-badge {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          padding: 4px 14px;
+          border-radius: 999px;
+          font-size: 0.75rem;
+          font-weight: 700;
+          letter-spacing: 0.8px;
+          text-transform: uppercase;
+        }
+        .l7-status-dot {
+          width: 8px;
+          height: 8px;
+          border-radius: 50%;
+          display: inline-block;
+          animation: l7DotBlink 1.2s ease-in-out infinite;
+        }
+        @keyframes l7DotBlink {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.3; }
+        }
+
+        /* ── Circular Timer ── */
+        .l7-circular-timer {
+          position: relative;
+          width: 140px;
+          height: 140px;
+          margin: 0 auto 1.25rem;
+        }
+        .l7-timer-center {
+          position: absolute;
+          inset: 0;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+        .l7-timer-number {
+          font-size: 2.75rem;
+          font-weight: 900;
+          font-family: var(--font-mono, monospace);
+          line-height: 1;
+        }
+        .l7-timer-emoji {
+          font-size: 2.5rem;
+          line-height: 1;
+        }
+        @keyframes l7TimerPulse {
+          0%, 100% { transform: scale(1); }
+          50% { transform: scale(1.06); }
+        }
+        @keyframes l7RevealSpin {
+          0% { transform: rotate(0deg) scale(1); }
+          50% { transform: rotate(180deg) scale(1.08); }
+          100% { transform: rotate(360deg) scale(1); }
+        }
+
+        /* ══ GAME AREA ═════════════════════════════════════ */
+        .l7-game-area {
           background: var(--bg-card, #0e1b2a);
           border: 1px solid var(--border-color, rgba(255,255,255,0.08));
           border-radius: var(--radius-lg, 16px);
-          overflow: hidden;
-        }
-
-        /* Preview Banner */
-        .l7-preview {
-          position: relative;
-          min-height: 200px;
-          background: linear-gradient(145deg, #050d1a, #0d1b3a);
-          border-bottom: 1px solid rgba(255,215,0,0.1);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          gap: 0;
-          overflow: hidden;
           padding: 1.5rem;
-        }
-        .l7-preview::before {
-          content: '';
-          position: absolute;
-          inset: 0;
-          background: radial-gradient(ellipse 60% 80% at 50% 50%, rgba(255,215,0,0.06), transparent 70%);
-          pointer-events: none;
-        }
-
-        .l7-preview-side {
-          display: flex;
-          gap: -8px;
-          align-items: center;
-          flex: 1;
-        }
-        .l7-preview-left {
-          justify-content: flex-end;
-          padding-right: 0.75rem;
-        }
-        .l7-preview-right {
-          justify-content: flex-start;
-          padding-left: 0.75rem;
-        }
-
-        .l7-preview-mini-card {
-          width: 34px;
-          height: 48px;
-          background: linear-gradient(145deg, #fff, #ececec);
-          border-radius: 6px;
-          border: 1px solid rgba(255,255,255,0.2);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          box-shadow: 0 2px 8px rgba(0,0,0,0.4);
-          margin: 0 -6px;
-          position: relative;
-        }
-
-        /* Center piece */
-        .l7-preview-center {
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          justify-content: center;
-          z-index: 2;
-          flex-shrink: 0;
-          text-align: center;
-        }
-
-        .l7-golden-seven {
-          font-size: 5rem;
-          font-weight: 900;
-          font-family: 'Georgia', serif;
-          line-height: 1;
-          background: linear-gradient(135deg, #fff7a0, #ffd700, #e67e22, #ffd700);
-          -webkit-background-clip: text;
-          -webkit-text-fill-color: transparent;
-          background-clip: text;
-          filter: drop-shadow(0 0 18px rgba(255,215,0,0.6)) drop-shadow(0 0 36px rgba(255,150,0,0.3));
-          animation: l7-seven-glow 2.5s ease-in-out infinite;
-          margin-bottom: 0.25rem;
-        }
-        @keyframes l7-seven-glow {
-          0%, 100% { filter: drop-shadow(0 0 16px rgba(255,215,0,0.55)) drop-shadow(0 0 32px rgba(255,150,0,0.25)); }
-          50%       { filter: drop-shadow(0 0 28px rgba(255,215,0,0.85)) drop-shadow(0 0 56px rgba(255,150,0,0.45)); }
-        }
-
-        .l7-preview-title {
-          font-size: 1.6rem;
-          font-weight: 900;
-          letter-spacing: 6px;
-          background: linear-gradient(135deg, #ffd700, #e67e22);
-          -webkit-background-clip: text;
-          -webkit-text-fill-color: transparent;
-          background-clip: text;
-          margin-bottom: 0.2rem;
-        }
-        .l7-preview-subtitle {
-          font-size: 0.8rem;
-          color: rgba(255,255,255,0.5);
-          font-weight: 600;
-          letter-spacing: 0.3px;
-        }
-
-        /* ══ CONTROLS ══════════════════════════════════════ */
-        .l7-controls-wrap {
-          padding: 1.25rem;
           display: flex;
           flex-direction: column;
           gap: 1.25rem;
+          align-items: center;
+        }
+        .l7-lucky-win-bg {
+          background: linear-gradient(145deg, #1a1200, #0e1b2a) !important;
+          border-color: rgba(255,215,0,0.2) !important;
+          box-shadow: 0 0 60px rgba(255,215,0,0.08);
+        }
+
+        /* ── Card Stage ── */
+        .l7-card-stage {
+          display: flex;
+          justify-content: center;
+          perspective: 900px;
+          min-height: 196px;
+        }
+        .l7-card {
+          display: block;
+          transition: box-shadow 0.3s;
+        }
+        .l7-card-flipping {
+          /* face-down card during deal */
+        }
+        .l7-card-flip-in {
+          animation: l7-flip-reveal 0.55s cubic-bezier(0.23, 1, 0.32, 1) forwards;
+        }
+        @keyframes l7-flip-reveal {
+          0%   { transform: rotateY(90deg) scale(0.9); opacity: 0.3; }
+          60%  { transform: rotateY(-8deg) scale(1.04); opacity: 1; }
+          100% { transform: rotateY(0deg) scale(1); opacity: 1; }
+        }
+        .l7-card-revealed {
+          /* revealed card */
+        }
+        .l7-card-label-below {
+          margin-top: 0.6rem;
+          text-align: center;
+          font-size: 0.9rem;
+          font-weight: 700;
+          color: var(--text-primary, #fff);
+          font-family: var(--font-mono, monospace);
+        }
+        .l7-card-reveal-wrap {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+        }
+
+        /* ── Result Banners ── */
+        .l7-result-banner {
+          width: 100%;
+          padding: 1.25rem 1rem;
+          border-radius: 14px;
+          text-align: center;
+        }
+        .l7-banner-lucky {
+          background: linear-gradient(145deg, rgba(255,215,0,0.12), rgba(230,126,34,0.08));
+          border: 2px solid rgba(255,215,0,0.4);
+          animation: l7-lucky-banner-in 0.5s ease-out, l7-lucky-banner-glow 2s ease-in-out infinite 0.5s;
+        }
+        @keyframes l7-lucky-banner-in {
+          from { transform: scale(0.85); opacity: 0; }
+          to   { transform: scale(1); opacity: 1; }
+        }
+        @keyframes l7-lucky-banner-glow {
+          0%, 100% { box-shadow: 0 0 12px rgba(255,215,0,0.2); }
+          50%       { box-shadow: 0 0 32px rgba(255,215,0,0.45); }
+        }
+        .l7-banner-win {
+          background: rgba(0,231,1,0.08);
+          border: 1px solid rgba(0,231,1,0.25);
+          animation: l7-banner-in 0.4s ease-out;
+        }
+        .l7-banner-loss {
+          background: rgba(220,38,38,0.08);
+          border: 1px solid rgba(220,38,38,0.25);
+          animation: l7-banner-in 0.4s ease-out;
+        }
+        .l7-banner-neutral {
+          background: rgba(255,255,255,0.04);
+          border: 1px solid rgba(255,255,255,0.1);
+          animation: l7-banner-in 0.4s ease-out;
+        }
+        @keyframes l7-banner-in {
+          from { opacity: 0; transform: translateY(-8px); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
+
+        .l7-sparkles-row {
+          font-size: 1.1rem;
+          letter-spacing: 6px;
+          animation: l7-sparkles-dance 1s ease-in-out infinite alternate;
+          margin: 0.25rem 0;
+        }
+        @keyframes l7-sparkles-dance {
+          from { letter-spacing: 4px; }
+          to   { letter-spacing: 10px; }
+        }
+
+        .l7-result-icon {
+          font-size: 2.2rem;
+          line-height: 1;
+          margin: 0.25rem 0;
+        }
+        .l7-banner-lucky .l7-result-icon {
+          font-size: 2.8rem;
+          animation: l7-icon-bounce 0.6s ease-out 0.3s both;
+        }
+        @keyframes l7-icon-bounce {
+          0%   { transform: scale(0) rotate(-15deg); }
+          60%  { transform: scale(1.2) rotate(5deg); }
+          100% { transform: scale(1) rotate(0deg); }
+        }
+        .l7-result-title {
+          font-size: 1.5rem;
+          font-weight: 900;
+          margin-bottom: 0.2rem;
+        }
+        .l7-banner-lucky .l7-result-title {
+          font-size: 2rem;
+          background: linear-gradient(135deg, #fff7a0, #ffd700, #e67e22);
+          -webkit-background-clip: text;
+          -webkit-text-fill-color: transparent;
+          background-clip: text;
+          letter-spacing: 2px;
+        }
+        .l7-banner-win .l7-result-title  { color: #00e701; }
+        .l7-banner-loss .l7-result-title { color: #dc2626; }
+        .l7-result-payout {
+          font-size: 1.75rem;
+          font-weight: 900;
+          font-family: var(--font-mono, monospace);
+          margin: 0.2rem 0;
+        }
+        .l7-banner-lucky .l7-result-payout { color: #ffd700; }
+        .l7-banner-win .l7-result-payout   { color: #00e701; }
+        .l7-result-sub {
+          font-size: 0.82rem;
+          color: rgba(255,255,255,0.55);
+          font-weight: 600;
         }
 
         /* ── Bet Grid ── */
@@ -597,6 +739,7 @@ export default function Lucky7GamePage() {
           display: grid;
           grid-template-columns: 1fr 1.15fr 1fr;
           gap: 0.6rem;
+          width: 100%;
         }
 
         .l7-bet-btn {
@@ -614,6 +757,10 @@ export default function Lucky7GamePage() {
           position: relative;
           overflow: hidden;
           text-align: center;
+        }
+        .l7-bet-btn:disabled {
+          cursor: not-allowed;
+          opacity: 0.55;
         }
         .l7-bet-btn::before {
           content: '';
@@ -709,12 +856,6 @@ export default function Lucky7GamePage() {
           text-transform: uppercase;
           opacity: 0.9;
         }
-        .l7-bet-cards {
-          font-size: 0.6rem;
-          opacity: 0.6;
-          font-weight: 600;
-          letter-spacing: 0.3px;
-        }
         .l7-bet-pays {
           font-size: 0.72rem;
           font-weight: 800;
@@ -726,10 +867,11 @@ export default function Lucky7GamePage() {
           color: #ffd700;
           opacity: 1;
         }
-        .l7-bet-odds {
-          font-size: 0.58rem;
-          opacity: 0.5;
+        .l7-bet-count {
+          font-size: 0.6rem;
+          opacity: 0.55;
           font-weight: 600;
+          margin-top: 2px;
         }
 
         /* Lucky 7 number in bet button */
@@ -764,8 +906,39 @@ export default function Lucky7GamePage() {
           100% { transform: rotate(360deg) scale(1); opacity: 0.8; }
         }
 
-        /* ── PLAY Button ── */
-        .l7-play-btn {
+        /* ── Bet Controls ── */
+        .l7-bet-controls {
+          width: 100%;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 0.75rem;
+        }
+        .l7-stake-row {
+          display: flex;
+          gap: 0.5rem;
+          flex-wrap: wrap;
+          justify-content: center;
+        }
+        .l7-stake-btn {
+          padding: 6px 14px;
+          border-radius: 8px;
+          font-weight: 700;
+          font-size: 0.82rem;
+          cursor: pointer;
+          border: 2px solid transparent;
+          transition: all 0.2s;
+          background: var(--bg-tertiary, #1a2535);
+          color: var(--text-secondary, rgba(255,255,255,0.7));
+          font-family: inherit;
+        }
+        .l7-stake-btn--active {
+          background: var(--accent-blue, #1da1f2);
+          color: #fff;
+          border-color: var(--accent-blue, #1da1f2);
+        }
+
+        .l7-place-btn {
           width: 100%;
           padding: 1rem 1.5rem;
           border-radius: 12px;
@@ -780,21 +953,21 @@ export default function Lucky7GamePage() {
           color: var(--text-muted, rgba(255,255,255,0.4));
           border: 2px solid var(--border-color, rgba(255,255,255,0.08));
         }
-        .l7-play-btn:disabled {
+        .l7-place-btn:disabled {
           cursor: not-allowed;
           opacity: 0.6;
         }
-        .l7-play-ready {
+        .l7-place-ready {
           background: linear-gradient(135deg, #1a6b3a, #0d4824) !important;
           border-color: rgba(0,231,1,0.35) !important;
           color: #00e701 !important;
           animation: l7-play-pulse 1.8s ease-in-out infinite;
         }
-        .l7-play-ready:hover:not(:disabled) {
+        .l7-place-ready:hover:not(:disabled) {
           transform: translateY(-2px);
           box-shadow: 0 6px 24px rgba(0,231,1,0.25);
         }
-        .l7-play-ready:active:not(:disabled) {
+        .l7-place-ready:active:not(:disabled) {
           transform: translateY(0);
         }
         @keyframes l7-play-pulse {
@@ -802,201 +975,30 @@ export default function Lucky7GamePage() {
           50%       { box-shadow: 0 0 20px 4px rgba(0,231,1,0.15); }
         }
 
-        /* ══ GAME AREA ═════════════════════════════════════ */
-        .l7-game-area {
-          background: var(--bg-card, #0e1b2a);
-          border: 1px solid var(--border-color, rgba(255,255,255,0.08));
-          border-radius: var(--radius-lg, 16px);
-          padding: 1.5rem;
-          display: flex;
-          flex-direction: column;
-          gap: 1.25rem;
-          align-items: center;
-        }
-        .l7-lucky-win-bg {
-          background: linear-gradient(145deg, #1a1200, #0e1b2a) !important;
-          border-color: rgba(255,215,0,0.2) !important;
-          box-shadow: 0 0 60px rgba(255,215,0,0.08);
-        }
-
-        /* ── Result Banners ── */
-        .l7-result-banner {
-          width: 100%;
-          padding: 1.25rem 1rem;
-          border-radius: 14px;
+        /* ── Messages ── */
+        .l7-message {
           text-align: center;
-        }
-        .l7-banner-lucky {
-          background: linear-gradient(145deg, rgba(255,215,0,0.12), rgba(230,126,34,0.08));
-          border: 2px solid rgba(255,215,0,0.4);
-          animation: l7-lucky-banner-in 0.5s ease-out, l7-lucky-banner-glow 2s ease-in-out infinite 0.5s;
-        }
-        @keyframes l7-lucky-banner-in {
-          from { transform: scale(0.85); opacity: 0; }
-          to   { transform: scale(1); opacity: 1; }
-        }
-        @keyframes l7-lucky-banner-glow {
-          0%, 100% { box-shadow: 0 0 12px rgba(255,215,0,0.2); }
-          50%       { box-shadow: 0 0 32px rgba(255,215,0,0.45); }
-        }
-        .l7-banner-win {
-          background: rgba(0,231,1,0.08);
-          border: 1px solid rgba(0,231,1,0.25);
-          animation: l7-banner-in 0.4s ease-out;
-        }
-        .l7-banner-loss {
-          background: rgba(220,38,38,0.08);
-          border: 1px solid rgba(220,38,38,0.25);
-          animation: l7-banner-in 0.4s ease-out;
-        }
-        @keyframes l7-banner-in {
-          from { opacity: 0; transform: translateY(-8px); }
-          to   { opacity: 1; transform: translateY(0); }
-        }
-
-        .l7-sparkles-row {
-          font-size: 1.1rem;
-          letter-spacing: 6px;
-          animation: l7-sparkles-dance 1s ease-in-out infinite alternate;
-          margin: 0.25rem 0;
-        }
-        @keyframes l7-sparkles-dance {
-          from { letter-spacing: 4px; }
-          to   { letter-spacing: 10px; }
-        }
-
-        .l7-result-icon {
-          font-size: 2.2rem;
-          line-height: 1;
-          margin: 0.25rem 0;
-        }
-        .l7-banner-lucky .l7-result-icon {
-          font-size: 2.8rem;
-          animation: l7-icon-bounce 0.6s ease-out 0.3s both;
-        }
-        @keyframes l7-icon-bounce {
-          0%   { transform: scale(0) rotate(-15deg); }
-          60%  { transform: scale(1.2) rotate(5deg); }
-          100% { transform: scale(1) rotate(0deg); }
-        }
-        .l7-result-title {
-          font-size: 1.5rem;
-          font-weight: 900;
-          margin-bottom: 0.2rem;
-        }
-        .l7-banner-lucky .l7-result-title {
-          font-size: 2rem;
-          background: linear-gradient(135deg, #fff7a0, #ffd700, #e67e22);
-          -webkit-background-clip: text;
-          -webkit-text-fill-color: transparent;
-          background-clip: text;
-          letter-spacing: 2px;
-        }
-        .l7-banner-win .l7-result-title  { color: #00e701; }
-        .l7-banner-loss .l7-result-title { color: #dc2626; }
-        .l7-result-payout {
-          font-size: 1.75rem;
-          font-weight: 900;
-          font-family: var(--font-mono, monospace);
-          margin: 0.2rem 0;
-        }
-        .l7-banner-lucky .l7-result-payout { color: #ffd700; }
-        .l7-banner-win .l7-result-payout   { color: #00e701; }
-        .l7-result-sub {
-          font-size: 0.82rem;
-          color: rgba(255,255,255,0.55);
-          font-weight: 600;
-        }
-
-        /* ── Dealing Label ── */
-        .l7-dealing-label {
-          font-size: 0.85rem;
-          color: rgba(255,255,255,0.5);
-          font-weight: 600;
-          letter-spacing: 2px;
-          text-transform: uppercase;
-          animation: l7-blink 1s ease-in-out infinite;
-        }
-        @keyframes l7-blink {
-          0%, 100% { opacity: 0.5; }
-          50%       { opacity: 1; }
-        }
-
-        /* ── Card Stage ── */
-        .l7-card-stage {
-          display: flex;
-          justify-content: center;
-          perspective: 900px;
-          min-height: 196px;
-        }
-        .l7-card-spin-wrap {
-          animation: l7-spin-deal 0.9s ease-in-out infinite;
-        }
-        @keyframes l7-spin-deal {
-          0%   { transform: rotateY(0deg) scale(1); }
-          25%  { transform: rotateY(90deg) scale(0.95); }
-          50%  { transform: rotateY(0deg) scale(1.02); }
-          75%  { transform: rotateY(-90deg) scale(0.95); }
-          100% { transform: rotateY(0deg) scale(1); }
-        }
-
-        .l7-card {
-          display: block;
-          transition: box-shadow 0.3s;
-        }
-        .l7-card-flipping {
-          /* used on face-down card during deal */
-        }
-        .l7-card-flip-in {
-          animation: l7-flip-reveal 0.55s cubic-bezier(0.23, 1, 0.32, 1) forwards;
-        }
-        @keyframes l7-flip-reveal {
-          0%   { transform: rotateY(90deg) scale(0.9); opacity: 0.3; }
-          60%  { transform: rotateY(-8deg) scale(1.04); opacity: 1; }
-          100% { transform: rotateY(0deg) scale(1); opacity: 1; }
-        }
-        .l7-card-revealed {
-          /* revealed card gets extra shadow matching result */
-        }
-
-        .l7-card-label-below {
-          margin-top: 0.6rem;
-          text-align: center;
-          font-size: 0.9rem;
+          padding: 0.75rem;
           font-weight: 700;
-          color: var(--text-primary, #fff);
-          font-family: var(--font-mono, monospace);
+          font-size: 0.9rem;
+          border-radius: 10px;
+          width: 100%;
         }
-        .l7-card-reveal-wrap {
-          display: flex;
-          flex-direction: column;
-          align-items: center;
+        .l7-message--bet {
+          color: var(--accent-green, #00e701);
+          background: rgba(0,231,1,0.08);
+        }
+        .l7-message--locked {
+          color: var(--text-muted, rgba(255,255,255,0.4));
+          background: rgba(255,255,255,0.03);
         }
 
-        /* ── Play Again Button ── */
-        .l7-again-btn {
-          width: 100%;
-          max-width: 340px;
-          padding: 0.9rem 1.5rem;
-          border-radius: 12px;
-          font-size: 1rem;
-          font-weight: 800;
-          letter-spacing: 1px;
-          cursor: pointer;
-          border: none;
-          font-family: inherit;
-          background: linear-gradient(135deg, #1a3a5c, #0e2540);
-          color: #5bc8f5;
-          border: 1px solid rgba(29,161,242,0.3);
-          transition: all 0.2s;
-        }
-        .l7-again-btn:hover {
-          transform: translateY(-2px);
-          box-shadow: 0 6px 20px rgba(29,161,242,0.2);
-          border-color: rgba(29,161,242,0.55);
-        }
-        .l7-again-btn:active {
-          transform: translateY(0);
+        /* ── Total bets ── */
+        .l7-total-bets {
+          font-size: 0.72rem;
+          color: var(--text-muted, rgba(255,255,255,0.4));
+          font-weight: 600;
+          text-align: center;
         }
 
         /* ══ HISTORY ═══════════════════════════════════════ */
@@ -1006,9 +1008,6 @@ export default function Lucky7GamePage() {
           border-radius: var(--radius-lg, 16px);
           padding: 0.85rem 1.25rem;
           margin-top: 0.75rem;
-        }
-        .l7-history-row {
-          width: 100%;
         }
         .l7-history-label {
           font-size: 0.65rem;
@@ -1053,6 +1052,9 @@ export default function Lucky7GamePage() {
 
         /* ══ RESPONSIVE ════════════════════════════════════ */
         @media (max-width: 480px) {
+          .l7-circular-timer { width: 110px; height: 110px; }
+          .l7-circular-timer svg { width: 110px; height: 110px; }
+          .l7-timer-number { font-size: 2rem; }
           .l7-bet-grid {
             grid-template-columns: 1fr 1.1fr 1fr;
             gap: 0.45rem;
@@ -1069,27 +1071,6 @@ export default function Lucky7GamePage() {
           .l7-bet-label {
             font-size: 0.6rem;
             letter-spacing: 0.5px;
-          }
-          .l7-bet-cards {
-            display: none;
-          }
-          .l7-preview {
-            min-height: 160px;
-            padding: 1rem;
-          }
-          .l7-golden-seven {
-            font-size: 3.8rem;
-          }
-          .l7-preview-title {
-            font-size: 1.2rem;
-            letter-spacing: 4px;
-          }
-          .l7-preview-mini-card {
-            width: 26px;
-            height: 36px;
-          }
-          .l7-preview-mini-card span {
-            font-size: 0.7rem !important;
           }
           .l7-banner-lucky .l7-result-title {
             font-size: 1.6rem;

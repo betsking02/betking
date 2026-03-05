@@ -37,4 +37,26 @@ function play(stake, bet) {
   };
 }
 
-module.exports = { play };
+function generateRound() {
+  const seed = crypto.randomBytes(16).toString('hex');
+  const hash = crypto.createHmac('sha256', seed).update('card').digest('hex');
+  const cardIndex = parseInt(hash.slice(0, 8), 16) % 52;
+  const valueIndex = cardIndex % 13;
+  const suitIndex = Math.floor(cardIndex / 13);
+  const value = CARD_VALUES[valueIndex];
+  const suit = SUITS[suitIndex];
+  const numericValue = CARD_NUMERIC[value];
+
+  let result;
+  if (numericValue < 7) result = 'under';
+  else if (numericValue === 7) result = 'lucky7';
+  else result = 'over';
+
+  return {
+    card: { value, suit, numericValue, display: `${value}${SUIT_SYMBOLS[suit]}` },
+    result,
+    seed,
+  };
+}
+
+module.exports = { play, generateRound };
