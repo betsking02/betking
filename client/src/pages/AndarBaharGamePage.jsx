@@ -207,21 +207,22 @@ export default function AndarBaharGamePage() {
     try {
       const res = await playAndarBahar(stake, bet);
       const data = res.data || res;
+      const game = data.gameResult || data;
 
       if (data.balance !== undefined) {
         updateBalance(data.balance);
       }
 
-      setGameResult(data);
+      setGameResult(game);
       setHistory(prev => [
-        { result: data.result, won: data.won },
+        { result: game.result, won: game.won },
         ...prev,
       ].slice(0, 8));
 
-      if (data.won) {
+      if (game.won) {
         toast.success(`You won ${formatCurrency(data.payout)}!`);
       } else {
-        toast.error(`${data.result === 'andar' ? 'ANDAR' : 'BAHAR'} wins! Better luck next time.`);
+        toast.error(`${game.result === 'andar' ? 'ANDAR' : 'BAHAR'} wins! Better luck next time.`);
       }
     } catch (err) {
       setSelectedBet(null);

@@ -226,6 +226,7 @@ export default function DragonTigerGamePage() {
     try {
       const res = await playDragonTiger(stake, betChoice);
       const data = res.data;
+      const game = data.gameResult;
 
       // Brief pause so face-down card animation is visible (at least 600ms)
       await new Promise(resolve => setTimeout(resolve, 650));
@@ -234,14 +235,14 @@ export default function DragonTigerGamePage() {
       // Small gap before flipping in
       await new Promise(resolve => setTimeout(resolve, 80));
 
-      setResult(data);
+      setResult(game);
       updateBalance(data.balance);
-      setHistory(prev => [data.result, ...prev].slice(0, 8));
+      setHistory(prev => [game.result, ...prev].slice(0, 8));
 
-      if (data.won) {
-        toast.success(`You won ${formatCurrency(data.payout)}! (${data.multiplier}x)`);
+      if (game.won) {
+        toast.success(`You won ${formatCurrency(data.payout)}! (${game.multiplier}x)`);
       } else {
-        toast.error(`${data.result === 'tie' ? 'Tie!' : data.result.charAt(0).toUpperCase() + data.result.slice(1) + ' wins!'} Better luck next time.`);
+        toast.error(`${game.result === 'tie' ? 'Tie!' : game.result.charAt(0).toUpperCase() + game.result.slice(1) + ' wins!'} Better luck next time.`);
       }
     } catch (err) {
       setDealing(false);

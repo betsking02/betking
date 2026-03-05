@@ -207,18 +207,19 @@ export default function Lucky7GamePage() {
       ]);
 
       const data = res.data || res;
+      const game = data.gameResult || data;
       setDealing(false);
 
       // Brief pause at edge-on moment before flip-in
       await new Promise(resolve => setTimeout(resolve, 120));
 
-      setResult(data);
-      setHistory(prev => [data.result, ...prev].slice(0, 8));
+      setResult(game);
+      setHistory(prev => [game.result, ...prev].slice(0, 8));
 
       if (data.balance != null) updateBalance(data.balance);
 
-      if (data.won) {
-        if (data.result === 'lucky7') {
+      if (game.won) {
+        if (game.result === 'lucky7') {
           toast.success(`LUCKY 7! You won ${formatCurrency(data.payout)}!`, { duration: 4000 });
         } else {
           toast.success(`You won ${formatCurrency(data.payout)}!`);
