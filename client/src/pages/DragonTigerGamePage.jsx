@@ -204,12 +204,12 @@ function HistoryBadge({ result }) {
   );
 }
 
-/* ── Circular Countdown Timer (SVG) ── */
+/* ── Small Circular Countdown Timer (SVG) ── */
 function CircularTimer({ secondsLeft, maxSeconds, status }) {
-  const radius = 60;
-  const stroke = 7;
-  const normalizedRadius = radius - stroke / 2;
-  const circumference = 2 * Math.PI * normalizedRadius;
+  const size = 48;
+  const stroke = 4;
+  const radius = (size - stroke) / 2;
+  const circumference = 2 * Math.PI * radius;
 
   const fraction = maxSeconds > 0 ? secondsLeft / maxSeconds : 0;
   const strokeDashoffset = circumference * (1 - fraction);
@@ -230,49 +230,26 @@ function CircularTimer({ secondsLeft, maxSeconds, status }) {
     <div
       className="dt-circular-timer"
       style={{
-        animation: isRevealing
-          ? 'dtRevealSpin 0.6s linear infinite'
-          : isPulsing ? 'dtTimerPulse 1s ease-in-out infinite' : 'none'
+        animation: isPulsing ? 'dtTimerPulse 1s ease-in-out infinite' : 'none'
       }}
     >
-      <svg width={radius * 2} height={radius * 2} viewBox={`0 0 ${radius * 2} ${radius * 2}`}>
-        {/* Background track */}
-        <circle
-          cx={radius}
-          cy={radius}
-          r={normalizedRadius}
-          fill="none"
-          stroke="rgba(255,255,255,0.08)"
-          strokeWidth={stroke}
-        />
-        {/* Animated arc */}
-        <circle
-          cx={radius}
-          cy={radius}
-          r={normalizedRadius}
-          fill="none"
-          stroke={timerColor}
-          strokeWidth={stroke}
-          strokeLinecap="round"
-          strokeDasharray={circumference}
-          strokeDashoffset={strokeDashoffset}
-          transform={`rotate(-90 ${radius} ${radius})`}
-          style={{
-            transition: 'stroke-dashoffset 0.95s linear, stroke 0.5s ease',
-            filter: `drop-shadow(0 0 6px ${timerColor}80)`,
-          }}
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+        <circle cx={size/2} cy={size/2} r={radius} fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth={stroke} />
+        <circle cx={size/2} cy={size/2} r={radius} fill="none" stroke={timerColor} strokeWidth={stroke} strokeLinecap="round"
+          strokeDasharray={circumference} strokeDashoffset={strokeDashoffset}
+          transform={`rotate(-90 ${size/2} ${size/2})`}
+          style={{ transition: 'stroke-dashoffset 0.95s linear, stroke 0.5s ease', filter: `drop-shadow(0 0 4px ${timerColor}80)` }}
         />
       </svg>
-      {/* Center number */}
       <div className="dt-timer-center" style={{ color: timerColor }}>
-        {status === 'result' ? (
-          <span className="dt-timer-emoji">{'\uD83C\uDF89'}</span>
-        ) : isRevealing ? (
-          <span className="dt-timer-emoji" style={{ fontSize: '1.8rem' }}>{'\uD83C\uDCCF'}</span>
-        ) : status === 'locked' ? (
-          <span className="dt-timer-emoji" style={{ fontSize: '1.6rem' }}>{'\uD83D\uDD12'}</span>
-        ) : (
+        {status === 'betting' ? (
           <span className="dt-timer-number">{secondsLeft}</span>
+        ) : status === 'locked' ? (
+          <span style={{ fontSize: '0.9rem' }}>{'\uD83D\uDD12'}</span>
+        ) : status === 'revealing' ? (
+          <span style={{ fontSize: '0.9rem' }}>{'\uD83C\uDCCF'}</span>
+        ) : (
+          <span style={{ fontSize: '0.85rem' }}>{'\uD83C\uDF89'}</span>
         )}
       </div>
     </div>
@@ -378,9 +355,8 @@ export default function DragonTigerGamePage() {
         payouts={DT_PAYOUTS}
       />
 
-      {/* ====== HEADER: Timer + Status + Round ====== */}
+      {/* ====== HEADER: Status + Round ====== */}
       <div className="dt-live-header">
-        <CircularTimer secondsLeft={secondsLeft} maxSeconds={30} status={status} />
         <div className="dt-live-header-info">
           <StatusBadge status={status} />
           <div className="dt-round-number">Round #{roundId || '---'}</div>
@@ -389,7 +365,8 @@ export default function DragonTigerGamePage() {
       </div>
 
       {/* ====== CARD TABLE ====== */}
-      <div className="dt-game-area">
+      <div className="dt-game-area" style={{ position: 'relative' }}>
+        <CircularTimer secondsLeft={secondsLeft} maxSeconds={30} status={status} />
         {/* Result banner (only during 'result' phase) */}
         {status === 'result' && roundResult && myBetChoice && (
           <div className={`dt-result-banner ${isMyWin ? 'dt-result-win' : 'dt-result-lose'}`}>
@@ -595,10 +572,10 @@ export default function DragonTigerGamePage() {
           background: var(--bg-card);
           border: 1px solid var(--border-color);
           border-radius: var(--radius-lg);
-          padding: 1.25rem;
+          padding: 0.75rem 1.25rem;
           display: flex;
           align-items: center;
-          gap: 1.25rem;
+          gap: 1rem;
           margin-bottom: 0;
         }
 
@@ -621,15 +598,20 @@ export default function DragonTigerGamePage() {
           font-weight: 600;
         }
 
-        /* ===== CIRCULAR TIMER ===== */
+        /* ===== CIRCULAR TIMER (small, top-right overlay) ===== */
         .dt-circular-timer {
-          position: relative;
-          width: 120px;
-          height: 120px;
+          position: absolute;
+          top: 10px;
+          right: 10px;
+          width: 48px;
+          height: 48px;
           flex-shrink: 0;
           display: flex;
           align-items: center;
           justify-content: center;
+          z-index: 10;
+          background: rgba(14, 27, 42, 0.85);
+          border-radius: 50%;
         }
 
         .dt-timer-center {
@@ -642,25 +624,15 @@ export default function DragonTigerGamePage() {
         }
 
         .dt-timer-number {
-          font-size: 2.2rem;
+          font-size: 1.1rem;
           font-weight: 900;
           font-family: var(--font-mono);
           line-height: 1;
         }
 
-        .dt-timer-emoji {
-          font-size: 2rem;
-          line-height: 1;
-        }
-
-        @keyframes dtRevealSpin {
-          from { transform: rotate(0deg); }
-          to   { transform: rotate(360deg); }
-        }
-
         @keyframes dtTimerPulse {
           0%, 100% { transform: scale(1); }
-          50%      { transform: scale(1.06); }
+          50%      { transform: scale(1.1); }
         }
 
         @keyframes dtStatusPulse {
@@ -1035,25 +1007,7 @@ export default function DragonTigerGamePage() {
         /* ===== RESPONSIVE ===== */
         @media (max-width: 480px) {
           .dt-live-header {
-            flex-direction: column;
-            align-items: center;
-            text-align: center;
-            gap: 0.75rem;
-            padding: 1rem;
-          }
-          .dt-live-header-info {
-            align-items: center;
-          }
-          .dt-circular-timer {
-            width: 100px;
-            height: 100px;
-          }
-          .dt-circular-timer svg {
-            width: 100px;
-            height: 100px;
-          }
-          .dt-timer-number {
-            font-size: 1.8rem;
+            padding: 0.6rem 0.85rem;
           }
           .dt-bet-buttons {
             grid-template-columns: 1fr 0.65fr 1fr;

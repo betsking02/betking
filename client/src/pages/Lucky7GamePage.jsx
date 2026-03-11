@@ -177,69 +177,48 @@ function HistoryBadge({ result }) {
   );
 }
 
-/* ── Circular Timer (SVG) ───────────────────────────────────── */
+/* ── Small Circular Timer (SVG) ────────────────────────────── */
 function CircularTimer({ secondsLeft, maxSeconds, status }) {
-  const radius = 70;
-  const stroke = 8;
-  const normalizedRadius = radius - stroke / 2;
-  const circumference = 2 * Math.PI * normalizedRadius;
+  const size = 48;
+  const stroke = 4;
+  const radius = (size - stroke) / 2;
+  const circumference = 2 * Math.PI * radius;
 
   const fraction = maxSeconds > 0 ? secondsLeft / maxSeconds : 0;
   const strokeDashoffset = circumference * (1 - fraction);
 
-  const isRevealing = status === 'revealing';
   const timerColor = useMemo(() => {
     if (status === 'result') return '#ffd700';
-    if (isRevealing) return '#a855f7';
+    if (status === 'revealing') return '#a855f7';
     if (secondsLeft > 15) return '#00e701';
     if (secondsLeft > 7) return '#ffb800';
     return '#ff4444';
-  }, [secondsLeft, status, isRevealing]);
+  }, [secondsLeft, status]);
 
   const isPulsing = secondsLeft <= 5 && status === 'betting';
 
   return (
     <div
       className="l7-circular-timer"
-      style={{
-        animation: isRevealing
-          ? 'l7RevealSpin 0.6s linear infinite'
-          : isPulsing ? 'l7TimerPulse 1s ease-in-out infinite' : 'none'
-      }}
+      style={{ animation: isPulsing ? 'l7TimerPulse 1s ease-in-out infinite' : 'none' }}
     >
-      <svg width={radius * 2} height={radius * 2} viewBox={`0 0 ${radius * 2} ${radius * 2}`}>
-        <circle
-          cx={radius}
-          cy={radius}
-          r={normalizedRadius}
-          fill="none"
-          stroke="rgba(255,255,255,0.08)"
-          strokeWidth={stroke}
-        />
-        <circle
-          cx={radius}
-          cy={radius}
-          r={normalizedRadius}
-          fill="none"
-          stroke={timerColor}
-          strokeWidth={stroke}
-          strokeLinecap="round"
-          strokeDasharray={circumference}
-          strokeDashoffset={strokeDashoffset}
-          transform={`rotate(-90 ${radius} ${radius})`}
-          style={{
-            transition: 'stroke-dashoffset 0.95s linear, stroke 0.5s ease',
-            filter: `drop-shadow(0 0 6px ${timerColor}80)`,
-          }}
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+        <circle cx={size/2} cy={size/2} r={radius} fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth={stroke} />
+        <circle cx={size/2} cy={size/2} r={radius} fill="none" stroke={timerColor} strokeWidth={stroke} strokeLinecap="round"
+          strokeDasharray={circumference} strokeDashoffset={strokeDashoffset}
+          transform={`rotate(-90 ${size/2} ${size/2})`}
+          style={{ transition: 'stroke-dashoffset 0.95s linear, stroke 0.5s ease', filter: `drop-shadow(0 0 4px ${timerColor}80)` }}
         />
       </svg>
       <div className="l7-timer-center" style={{ color: timerColor }}>
-        {status === 'result' ? (
-          <span className="l7-timer-emoji">&#127183;</span>
-        ) : isRevealing ? (
-          <span className="l7-timer-emoji" style={{ fontSize: '2rem' }}>&#127183;</span>
-        ) : (
+        {status === 'betting' ? (
           <span className="l7-timer-number">{secondsLeft}</span>
+        ) : status === 'locked' ? (
+          <span style={{ fontSize: '0.9rem' }}>&#128274;</span>
+        ) : status === 'revealing' ? (
+          <span style={{ fontSize: '0.9rem' }}>&#127183;</span>
+        ) : (
+          <span style={{ fontSize: '0.85rem' }}>&#127881;</span>
         )}
       </div>
     </div>
@@ -312,9 +291,9 @@ export default function Lucky7GamePage() {
       </div>
 
       {/* Main game card */}
-      <div className={`l7-game-area${isLucky7Win ? ' l7-lucky-win-bg' : ''}`}>
+      <div className={`l7-game-area${isLucky7Win ? ' l7-lucky-win-bg' : ''}`} style={{ position: 'relative' }}>
 
-        {/* Circular Timer at top center */}
+        {/* Small timer overlay top-right */}
         <CircularTimer
           secondsLeft={gameState.secondsLeft}
           maxSeconds={MAX_SECONDS}
@@ -550,12 +529,19 @@ export default function Lucky7GamePage() {
           50% { opacity: 0.3; }
         }
 
-        /* ── Circular Timer ── */
+        /* ── Circular Timer (small, top-right overlay) ── */
         .l7-circular-timer {
-          position: relative;
-          width: 140px;
-          height: 140px;
-          margin: 0 auto 1.25rem;
+          position: absolute;
+          top: 10px;
+          right: 10px;
+          width: 48px;
+          height: 48px;
+          z-index: 10;
+          background: rgba(14, 27, 42, 0.85);
+          border-radius: 50%;
+          display: flex;
+          align-items: center;
+          justify-content: center;
         }
         .l7-timer-center {
           position: absolute;
@@ -565,23 +551,14 @@ export default function Lucky7GamePage() {
           justify-content: center;
         }
         .l7-timer-number {
-          font-size: 2.75rem;
+          font-size: 1.1rem;
           font-weight: 900;
           font-family: var(--font-mono, monospace);
           line-height: 1;
         }
-        .l7-timer-emoji {
-          font-size: 2.5rem;
-          line-height: 1;
-        }
         @keyframes l7TimerPulse {
           0%, 100% { transform: scale(1); }
-          50% { transform: scale(1.06); }
-        }
-        @keyframes l7RevealSpin {
-          0% { transform: rotate(0deg) scale(1); }
-          50% { transform: rotate(180deg) scale(1.08); }
-          100% { transform: rotate(360deg) scale(1); }
+          50% { transform: scale(1.1); }
         }
 
         /* ══ GAME AREA ═════════════════════════════════════ */
@@ -1052,9 +1029,6 @@ export default function Lucky7GamePage() {
 
         /* ══ RESPONSIVE ════════════════════════════════════ */
         @media (max-width: 480px) {
-          .l7-circular-timer { width: 110px; height: 110px; }
-          .l7-circular-timer svg { width: 110px; height: 110px; }
-          .l7-timer-number { font-size: 2rem; }
           .l7-bet-grid {
             grid-template-columns: 1fr 1.1fr 1fr;
             gap: 0.45rem;

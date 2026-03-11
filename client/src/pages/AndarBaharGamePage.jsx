@@ -158,7 +158,7 @@ function PlayingCard({ card, size = 'small', highlight = false, faceDown = false
 // ──────────────────────────────────────────
 // CircularTimer component
 // ──────────────────────────────────────────
-function CircularTimer({ secondsLeft, totalSeconds = 30, size = 64 }) {
+function CircularTimer({ secondsLeft, totalSeconds = 30, size = 48 }) {
   const radius = (size - 8) / 2;
   const circumference = 2 * Math.PI * radius;
   const progress = totalSeconds > 0 ? secondsLeft / totalSeconds : 0;
@@ -309,10 +309,9 @@ export default function AndarBaharGamePage() {
         payouts={AB_PAYOUTS}
       />
 
-      {/* ── TIMER + STATUS HEADER ── */}
+      {/* ── STATUS HEADER ── */}
       <div className="ab-live-header">
         <div className="ab-live-header-left">
-          <CircularTimer secondsLeft={gameState.secondsLeft || 0} totalSeconds={30} />
           <div className="ab-live-header-info">
             <StatusBadge status={gameState.status} />
             <div className="ab-round-number">
@@ -353,7 +352,10 @@ export default function AndarBaharGamePage() {
       </div>
 
       {/* ── MAIN GAME CARD ── */}
-      <div className="ab-main-card">
+      <div className="ab-main-card" style={{ position: 'relative' }}>
+
+        {/* Small timer overlay top-right */}
+        <CircularTimer secondsLeft={gameState.secondsLeft || 0} totalSeconds={30} />
 
         {/* ---- BET BUTTONS (always visible, disabled when not betting or already bet) ---- */}
         <div className="ab-bet-buttons">
@@ -620,18 +622,23 @@ export default function AndarBaharGamePage() {
           gap: 2px;
         }
 
-        /* -------- Circular Timer -------- */
+        /* -------- Circular Timer (small, top-right overlay) -------- */
         .ab-circular-timer {
-          position: relative;
+          position: absolute;
+          top: 10px;
+          right: 10px;
           display: flex;
           align-items: center;
           justify-content: center;
           flex-shrink: 0;
+          z-index: 10;
+          background: rgba(14, 27, 42, 0.85);
+          border-radius: 50%;
         }
 
         .ab-timer-text {
           position: absolute;
-          font-size: 1.3rem;
+          font-size: 1.1rem;
           font-weight: 900;
           font-family: var(--font-mono);
           color: #00c853;
@@ -645,7 +652,7 @@ export default function AndarBaharGamePage() {
 
         @keyframes abTimerPulse {
           0%, 100% { opacity: 1; transform: scale(1); }
-          50% { opacity: 0.7; transform: scale(1.08); }
+          50% { opacity: 0.7; transform: scale(1.1); }
         }
 
         /* -------- Status Badge -------- */
