@@ -647,16 +647,15 @@ router.post('/tower/start', authenticate, (req, res, next) => {
   }
 });
 
-// Tower - Climb (pick a tile on the next floor)
-router.post('/tower/climb', authenticate, (req, res, next) => {
+// Tower - Build (add a floor)
+router.post('/tower/build', authenticate, (req, res, next) => {
   try {
-    const { gameId, column } = req.body;
+    const { gameId } = req.body;
     if (!gameId) return res.status(400).json({ error: 'gameId is required' });
-    if (column === undefined || column === null) return res.status(400).json({ error: 'column is required' });
 
-    const result = tower.climbFloor(gameId, column);
+    const result = tower.build(gameId);
 
-    if (result.isTrap) {
+    if (result.collapsed) {
       const game = tower.getGame(gameId);
       const user = db.prepare('SELECT balance FROM users WHERE id = ?').get(req.user.id);
       db.prepare(`
@@ -664,8 +663,9 @@ router.post('/tower/climb', authenticate, (req, res, next) => {
         VALUES (?, 'tower', ?, ?, 0, 'lost', ?, datetime('now'))
       `).run(req.user.id, `Tower ${game.difficulty}`, game.stake, JSON.stringify({
         difficulty: game.difficulty,
-        floorsClimbed: game.currentFloor,
-        result: 'trap_hit',
+        floorsBuilt: game.currentFloor,
+        collapseFloor: result.collapseFloor,
+        result: 'collapsed',
       }));
       result.balance = user.balance;
     } else if (result.reachedTop) {
@@ -682,7 +682,7 @@ router.post('/tower/climb', authenticate, (req, res, next) => {
         VALUES (?, 'tower', ?, ?, ?, 'won', ?, datetime('now'))
       `).run(req.user.id, `Tower ${game.difficulty}`, game.stake, result.payout, JSON.stringify({
         difficulty: game.difficulty,
-        floorsClimbed: game.currentFloor,
+        floorsBuilt: game.currentFloor,
         multiplier: result.multiplier,
         result: 'reached_top',
       }));
@@ -691,7 +691,7 @@ router.post('/tower/climb', authenticate, (req, res, next) => {
 
     res.json(result);
   } catch (err) {
-    if (err.message.includes('not found') || err.message.includes('not active') || err.message.includes('Invalid') || err.message.includes('Already')) {
+    if (err.message.includes('not found') || err.message.includes('not active') || err.message.includes('Already')) {
       return res.status(400).json({ error: err.message });
     }
     next(err);
@@ -730,7 +730,7 @@ router.post('/tower/cashout', authenticate, (req, res, next) => {
     result.balance = finalBalance;
     res.json(result);
   } catch (err) {
-    if (err.message.includes('not found') || err.message.includes('not active') || err.message.includes('Must climb')) {
+    if (err.message.includes('not found') || err.message.includes('not active') || err.message.includes('Must build')) {
       return res.status(400).json({ error: err.message });
     }
     next(err);

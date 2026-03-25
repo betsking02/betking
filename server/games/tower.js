@@ -1,48 +1,40 @@
 const crypto = require('crypto');
 
-// Tower difficulties: columns per row, traps per row
+// Difficulty: risk level determines collapse chance per floor
 const DIFFICULTIES = {
-  easy:   { columns: 4, traps: 1, rows: 8,  label: 'Easy' },
-  medium: { columns: 3, traps: 1, rows: 8,  label: 'Medium' },
-  hard:   { columns: 2, traps: 1, rows: 8,  label: 'Hard' },
+  easy:   { collapseChance: 0.15, maxFloors: 15, label: 'Easy' },   // 15% per floor
+  medium: { collapseChance: 0.25, maxFloors: 12, label: 'Medium' }, // 25% per floor
+  hard:   { collapseChance: 0.40, maxFloors: 10, label: 'Hard' },   // 40% per floor
 };
 
-// Multiplier tables per difficulty (floor 1 through 8)
+// Get multiplier for a given floor (compound growth with house edge)
 function getMultiplier(difficulty, floor) {
   if (floor <= 0) return 1;
-
   const diff = DIFFICULTIES[difficulty];
-  const safePerRow = diff.columns - diff.traps;
-  let multiplier = 1;
-
-  for (let i = 0; i < floor; i++) {
-    multiplier *= diff.columns / safePerRow;
-  }
-
-  // Apply 3% house edge
-  multiplier *= 0.97;
+  const survivalRate = 1 - diff.collapseChance;
+  // Fair multiplier = 1 / survivalRate^floor, with 3% house edge
+  let multiplier = Math.pow(1 / survivalRate, floor) * 0.97;
   return Math.round(multiplier * 100) / 100;
 }
 
 const activeGames = new Map();
 
-function generateTraps(serverSeed, nonce, rows, columns, trapsPerRow) {
-  const trapMap = [];
-  for (let row = 0; row < rows; row++) {
-    const rowTraps = new Set();
-    let counter = 0;
-    while (rowTraps.size < trapsPerRow) {
-      const hash = crypto
-        .createHmac('sha256', serverSeed)
-        .update(`${nonce}:${row}:${counter}`)
-        .digest('hex');
-      const value = parseInt(hash.substring(0, 8), 16) % columns;
-      rowTraps.add(value);
-      counter++;
+// Pre-determine which floor the building collapses on
+function generateCollapseFloor(serverSeed, nonce, difficulty) {
+  const diff = DIFFICULTIES[difficulty];
+  // Simulate each floor to find where collapse happens
+  for (let floor = 1; floor <= diff.maxFloors; floor++) {
+    const hash = crypto
+      .createHmac('sha256', serverSeed)
+      .update(`${nonce}:floor:${floor}`)
+      .digest('hex');
+    const value = parseInt(hash.substring(0, 8), 16) / 0xFFFFFFFF; // 0 to 1
+    if (value < diff.collapseChance) {
+      return floor; // Building collapses when trying to build this floor
     }
-    trapMap.push(Array.from(rowTraps));
   }
-  return trapMap;
+  // Survived all floors — collapse after max
+  return diff.maxFloors + 1;
 }
 
 function createGame(userId, stake, difficulty) {
@@ -53,75 +45,63 @@ function createGame(userId, stake, difficulty) {
   const nonce = Date.now().toString();
   const gameId = `tower_${userId}_${Date.now()}`;
 
-  const trapMap = generateTraps(serverSeed, nonce, diff.rows, diff.columns, diff.traps);
+  const collapseFloor = generateCollapseFloor(serverSeed, nonce, difficulty);
 
   const game = {
     gameId,
     userId,
     stake,
     difficulty,
-    columns: diff.columns,
-    rows: diff.rows,
-    trapsPerRow: diff.traps,
-    trapMap,        // trapMap[row] = [trapColumnIndices]
-    currentFloor: 0, // 0 = ground (no floor cleared yet)
-    revealedTiles: [], // [{row, col}]
+    maxFloors: diff.maxFloors,
+    collapseFloor,    // building collapses when trying to build this floor
+    currentFloor: 0,  // 0 = no floors built yet
     status: 'active', // active | won | lost
     multiplier: 1,
     createdAt: Date.now(),
   };
 
   activeGames.set(gameId, game);
-
-  // Auto-expire after 10 minutes
   setTimeout(() => activeGames.delete(gameId), 600000);
 
   return {
     gameId,
-    columns: diff.columns,
-    rows: diff.rows,
-    trapsPerRow: diff.traps,
     difficulty,
+    maxFloors: diff.maxFloors,
     multiplier: 1,
     nextMultiplier: getMultiplier(difficulty, 1),
     currentFloor: 0,
   };
 }
 
-function climbFloor(gameId, column) {
+function build(gameId) {
   const game = activeGames.get(gameId);
   if (!game) throw new Error('Game not found or expired');
   if (game.status !== 'active') throw new Error('Game is not active');
 
-  const targetRow = game.currentFloor; // next row to climb (0-indexed from bottom)
-  if (targetRow >= game.rows) throw new Error('Already at the top');
-  if (column < 0 || column >= game.columns) throw new Error('Invalid column');
+  const targetFloor = game.currentFloor + 1;
 
-  const isTrap = game.trapMap[targetRow].includes(column);
-
-  game.revealedTiles.push({ row: targetRow, col: column });
-
-  if (isTrap) {
+  // Check if building collapses on this floor
+  if (targetFloor >= game.collapseFloor) {
     game.status = 'lost';
     game.multiplier = 0;
     activeGames.set(gameId, game);
 
     return {
-      isTrap: true,
-      row: targetRow,
-      column,
+      collapsed: true,
+      floor: targetFloor,
+      collapseFloor: game.collapseFloor,
       multiplier: 0,
       gameOver: true,
       currentFloor: game.currentFloor,
-      trapMap: game.trapMap, // reveal all traps on loss
       payout: 0,
     };
   }
 
-  game.currentFloor = targetRow + 1;
+  // Floor built successfully
+  game.currentFloor = targetFloor;
   game.multiplier = getMultiplier(game.difficulty, game.currentFloor);
 
-  const reachedTop = game.currentFloor >= game.rows;
+  const reachedTop = game.currentFloor >= game.maxFloors;
 
   if (reachedTop) {
     game.status = 'won';
@@ -129,14 +109,12 @@ function climbFloor(gameId, column) {
     activeGames.set(gameId, game);
 
     return {
-      isTrap: false,
-      row: targetRow,
-      column,
+      collapsed: false,
+      floor: targetFloor,
       multiplier: game.multiplier,
       gameOver: true,
       reachedTop: true,
       currentFloor: game.currentFloor,
-      trapMap: game.trapMap,
       payout,
     };
   }
@@ -145,9 +123,8 @@ function climbFloor(gameId, column) {
   activeGames.set(gameId, game);
 
   return {
-    isTrap: false,
-    row: targetRow,
-    column,
+    collapsed: false,
+    floor: targetFloor,
     multiplier: game.multiplier,
     nextMultiplier,
     gameOver: false,
@@ -160,7 +137,7 @@ function cashout(gameId) {
   const game = activeGames.get(gameId);
   if (!game) throw new Error('Game not found or expired');
   if (game.status !== 'active') throw new Error('Game is not active');
-  if (game.currentFloor === 0) throw new Error('Must climb at least one floor before cashing out');
+  if (game.currentFloor === 0) throw new Error('Must build at least one floor before cashing out');
 
   game.status = 'won';
   const payout = Math.round(game.stake * game.multiplier * 100) / 100;
@@ -169,8 +146,8 @@ function cashout(gameId) {
   return {
     payout,
     multiplier: game.multiplier,
-    trapMap: game.trapMap,
     currentFloor: game.currentFloor,
+    collapseFloor: game.collapseFloor,
   };
 }
 
@@ -178,4 +155,4 @@ function getGame(gameId) {
   return activeGames.get(gameId);
 }
 
-module.exports = { createGame, climbFloor, cashout, getGame, activeGames, DIFFICULTIES, getMultiplier };
+module.exports = { createGame, build, cashout, getGame, activeGames, DIFFICULTIES, getMultiplier };
