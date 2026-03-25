@@ -15,6 +15,7 @@ const hilo = require('../games/hilo');
 const dragontiger = require('../games/dragontiger');
 const lucky7 = require('../games/lucky7');
 const andarbahar = require('../games/andarbahar');
+const tower = require('../games/tower');
 
 // Helper: process casino bet (deduct stake, return result, credit winnings)
 function processCasinoBet(userId, stake, gameType, selection, gameLogicFn) {
@@ -607,6 +608,131 @@ router.post('/andarbahar/play', authenticate, (req, res, next) => {
     res.json(result);
   } catch (err) {
     if (err.message.includes('balance') || err.message.includes('bet')) return res.status(400).json({ error: err.message });
+    next(err);
+  }
+});
+
+// Tower - Start
+router.post('/tower/start', authenticate, (req, res, next) => {
+  try {
+    const { stake, difficulty } = req.body;
+    if (!stake) return res.status(400).json({ error: 'Stake is required' });
+    if (!difficulty || !tower.DIFFICULTIES[difficulty]) {
+      return res.status(400).json({ error: 'Invalid difficulty (easy/medium/hard)' });
+    }
+
+    const maxBet = parseFloat(db.prepare("SELECT value FROM app_settings WHERE key = 'max_bet'").get()?.value || '50000');
+    const minBet = parseFloat(db.prepare("SELECT value FROM app_settings WHERE key = 'min_bet'").get()?.value || '10');
+    if (stake > maxBet || stake < minBet) return res.status(400).json({ error: `Bet must be between ${minBet} and ${maxBet}` });
+
+    const user = db.prepare('SELECT balance FROM users WHERE id = ?').get(req.user.id);
+    if (user.balance < stake) return res.status(400).json({ error: 'Insufficient balance' });
+
+    const newBalance = user.balance - stake;
+    db.prepare("UPDATE users SET balance = ?, updated_at = datetime('now') WHERE id = ?").run(newBalance, req.user.id);
+    db.prepare(`
+      INSERT INTO transactions (user_id, type, amount, balance_after, description)
+      VALUES (?, 'bet_placed', ?, ?, 'Tower bet')
+    `).run(req.user.id, -stake, newBalance);
+
+    const game = tower.createGame(req.user.id, stake, difficulty);
+    game.balance = newBalance;
+
+    res.json(game);
+  } catch (err) {
+    if (err.message.includes('balance') || err.message.includes('bet') || err.message.includes('difficulty')) {
+      return res.status(400).json({ error: err.message });
+    }
+    next(err);
+  }
+});
+
+// Tower - Climb (pick a tile on the next floor)
+router.post('/tower/climb', authenticate, (req, res, next) => {
+  try {
+    const { gameId, column } = req.body;
+    if (!gameId) return res.status(400).json({ error: 'gameId is required' });
+    if (column === undefined || column === null) return res.status(400).json({ error: 'column is required' });
+
+    const result = tower.climbFloor(gameId, column);
+
+    if (result.isTrap) {
+      const game = tower.getGame(gameId);
+      const user = db.prepare('SELECT balance FROM users WHERE id = ?').get(req.user.id);
+      db.prepare(`
+        INSERT INTO bets (user_id, game_type, selection, stake, actual_payout, status, game_details, settled_at)
+        VALUES (?, 'tower', ?, ?, 0, 'lost', ?, datetime('now'))
+      `).run(req.user.id, `Tower ${game.difficulty}`, game.stake, JSON.stringify({
+        difficulty: game.difficulty,
+        floorsClimbed: game.currentFloor,
+        result: 'trap_hit',
+      }));
+      result.balance = user.balance;
+    } else if (result.reachedTop) {
+      const game = tower.getGame(gameId);
+      const user = db.prepare('SELECT balance FROM users WHERE id = ?').get(req.user.id);
+      const finalBalance = user.balance + result.payout;
+      db.prepare("UPDATE users SET balance = ?, updated_at = datetime('now') WHERE id = ?").run(finalBalance, req.user.id);
+      db.prepare(`
+        INSERT INTO transactions (user_id, type, amount, balance_after, description)
+        VALUES (?, 'bet_won', ?, ?, ?)
+      `).run(req.user.id, result.payout, finalBalance, `Tower win x${result.multiplier}`);
+      db.prepare(`
+        INSERT INTO bets (user_id, game_type, selection, stake, actual_payout, status, game_details, settled_at)
+        VALUES (?, 'tower', ?, ?, ?, 'won', ?, datetime('now'))
+      `).run(req.user.id, `Tower ${game.difficulty}`, game.stake, result.payout, JSON.stringify({
+        difficulty: game.difficulty,
+        floorsClimbed: game.currentFloor,
+        multiplier: result.multiplier,
+        result: 'reached_top',
+      }));
+      result.balance = finalBalance;
+    }
+
+    res.json(result);
+  } catch (err) {
+    if (err.message.includes('not found') || err.message.includes('not active') || err.message.includes('Invalid') || err.message.includes('Already')) {
+      return res.status(400).json({ error: err.message });
+    }
+    next(err);
+  }
+});
+
+// Tower - Cashout
+router.post('/tower/cashout', authenticate, (req, res, next) => {
+  try {
+    const { gameId } = req.body;
+    if (!gameId) return res.status(400).json({ error: 'gameId is required' });
+
+    const game = tower.getGame(gameId);
+    if (!game) return res.status(400).json({ error: 'Game not found or expired' });
+
+    const result = tower.cashout(gameId);
+
+    const user = db.prepare('SELECT balance FROM users WHERE id = ?').get(req.user.id);
+    const finalBalance = user.balance + result.payout;
+    db.prepare("UPDATE users SET balance = ?, updated_at = datetime('now') WHERE id = ?").run(finalBalance, req.user.id);
+    db.prepare(`
+      INSERT INTO transactions (user_id, type, amount, balance_after, description)
+      VALUES (?, 'bet_won', ?, ?, ?)
+    `).run(req.user.id, result.payout, finalBalance, `Tower win x${result.multiplier}`);
+
+    db.prepare(`
+      INSERT INTO bets (user_id, game_type, selection, stake, actual_payout, status, game_details, settled_at)
+      VALUES (?, 'tower', ?, ?, ?, 'won', ?, datetime('now'))
+    `).run(req.user.id, `Tower ${game.difficulty}`, game.stake, result.payout, JSON.stringify({
+      difficulty: game.difficulty,
+      floorsClimbed: game.currentFloor,
+      multiplier: result.multiplier,
+      result: 'cashout',
+    }));
+
+    result.balance = finalBalance;
+    res.json(result);
+  } catch (err) {
+    if (err.message.includes('not found') || err.message.includes('not active') || err.message.includes('Must climb')) {
+      return res.status(400).json({ error: err.message });
+    }
     next(err);
   }
 });

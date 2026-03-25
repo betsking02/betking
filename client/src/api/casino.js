@@ -18,4 +18,7 @@ export const cashoutHiLo = (gameId) => api.post('/casino/hilo/cashout', { gameId
 export const playDragonTiger = (stake, bet) => api.post('/casino/dragontiger/play', { stake, bet });
 export const playLucky7 = (stake, bet) => api.post('/casino/lucky7/play', { stake, bet });
 export const playAndarBahar = (stake, bet) => api.post('/casino/andarbahar/play', { stake, bet });
+export const startTower = (stake, difficulty) => api.post('/casino/tower/start', { stake, difficulty });
+export const climbTower = (gameId, column) => api.post('/casino/tower/climb', { gameId, column });
+export const cashoutTower = (gameId) => api.post('/casino/tower/cashout', { gameId });
 export const getCasinoHistory = (params) => api.get('/casino/history', { params });

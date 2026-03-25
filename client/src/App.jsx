@@ -25,6 +25,7 @@ import HiLoGamePage from './pages/HiLoGamePage';
 import DragonTigerGamePage from './pages/DragonTigerGamePage';
 import Lucky7GamePage from './pages/Lucky7GamePage';
 import AndarBaharGamePage from './pages/AndarBaharGamePage';
+import TowerGamePage from './pages/TowerGamePage';
 import MyBetsPage from './pages/MyBetsPage';
 import WalletPage from './pages/WalletPage';
 import AdminDashboard from './pages/AdminDashboard';
@@ -86,6 +87,7 @@ function AppRoutes() {
             <Route path="/casino/dragontiger" element={<DragonTigerGamePage />} />
             <Route path="/casino/lucky7" element={<Lucky7GamePage />} />
             <Route path="/casino/andarbahar" element={<AndarBaharGamePage />} />
+            <Route path="/casino/tower" element={<TowerGamePage />} />
             <Route path="/dashboard" element={<UserDashboard />} />
             <Route path="/my-bets" element={<MyBetsPage />} />
             <Route path="/wallet" element={<WalletPage />} />
