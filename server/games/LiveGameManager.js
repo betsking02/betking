@@ -108,8 +108,6 @@ class LiveGameManager {
   placeBet(socketId, userId, username, choice, amount) {
     if (this.status !== 'betting') throw new Error('Betting is closed');
     if (!this.validBets.includes(choice)) throw new Error('Invalid bet option');
-    if (this.bets.find(b => b.userId === userId)) throw new Error('Already bet this round');
-
     this.bets.push({ socketId, userId, username, choice, amount });
 
     const betCounts = {};

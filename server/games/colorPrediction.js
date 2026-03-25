@@ -115,9 +115,6 @@ class ColorPredictionManager {
     if (this.status !== 'betting') throw new Error('Betting is closed');
     if (!COLORS[color]) throw new Error('Invalid color');
 
-    const existing = this.bets.find(b => b.userId === userId);
-    if (existing) throw new Error('Already bet this round');
-
     this.bets.push({ userId, username, color, amount, socketId });
 
     const betCounts = { red: 0, green: 0, violet: 0 };

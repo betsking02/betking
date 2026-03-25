@@ -24,7 +24,8 @@ class CrashGameManager {
     this.status = 'waiting'; // waiting | running | crashed
     this.crashPoint = 0;
     this.startTime = null;
-    this.bets = new Map(); // socketId -> { userId, username, amount, cashedOut, cashoutMultiplier, autoCashout }
+    this.bets = new Map(); // betId -> { socketId, userId, username, amount, cashedOut, cashoutMultiplier, autoCashout }
+    this.betCounter = 0;
     this.multiplier = 1.00;
     this.tickInterval = null;
     this.history = []; // last 20 crash points
@@ -82,9 +83,9 @@ class CrashGameManager {
 
     // Check auto-cashout thresholds
     if (this.autoCashoutHandler) {
-      for (const [socketId, bet] of this.bets) {
+      for (const [betId, bet] of this.bets) {
         if (!bet.cashedOut && bet.autoCashout && this.multiplier >= bet.autoCashout) {
-          const ok = this.autoCashoutHandler(socketId, bet, this.multiplier);
+          const ok = this.autoCashoutHandler(bet.socketId, bet, this.multiplier);
           if (ok) {
             bet.cashedOut = true;
             bet.cashoutMultiplier = this.multiplier;
@@ -127,9 +128,10 @@ class CrashGameManager {
 
   placeBet(socketId, userId, username, amount, autoCashout = null) {
     if (this.status !== 'waiting') throw new Error('Bets only during waiting phase');
-    if (this.bets.has(socketId)) throw new Error('Already bet this round');
 
-    this.bets.set(socketId, {
+    const betId = `${socketId}_${++this.betCounter}`;
+    this.bets.set(betId, {
+      socketId,
       userId,
       username,
       amount,
@@ -142,22 +144,30 @@ class CrashGameManager {
       this.io.to('crash').emit('crash:bet_placed', { username, amount });
     }
 
-    return true;
+    return betId;
   }
 
   cashout(socketId) {
     if (this.status !== 'running') throw new Error('Game not running');
-    const bet = this.bets.get(socketId);
-    if (!bet) throw new Error('No bet found');
-    if (bet.cashedOut) throw new Error('Already cashed out');
 
-    bet.cashedOut = true;
-    bet.cashoutMultiplier = this.multiplier;
-    const payout = Math.round(bet.amount * this.multiplier * 100) / 100;
+    // Find the first uncashed bet for this socket
+    let targetBet = null;
+    for (const [, bet] of this.bets) {
+      if (bet.socketId === socketId && !bet.cashedOut) {
+        targetBet = bet;
+        break;
+      }
+    }
+
+    if (!targetBet) throw new Error('No active bet found');
+
+    targetBet.cashedOut = true;
+    targetBet.cashoutMultiplier = this.multiplier;
+    const payout = Math.round(targetBet.amount * this.multiplier * 100) / 100;
 
     if (this.io) {
       this.io.to('crash').emit('crash:cashed_out', {
-        username: bet.username,
+        username: targetBet.username,
         multiplier: this.multiplier,
         payout
       });

@@ -342,7 +342,7 @@ export default function DragonTigerGamePage() {
     return roundResult.result === 'tiger' ? 'win' : 'lose';
   };
 
-  const bettingDisabled = hasBet || status !== 'betting';
+  const bettingDisabled = status !== 'betting';
 
   return (
     <div className="casino-game-page" style={{ maxWidth: 600 }}>
@@ -491,7 +491,7 @@ export default function DragonTigerGamePage() {
                   key={amt}
                   className={`btn btn-sm ${stake === amt ? 'btn-primary' : 'btn-outline'}`}
                   onClick={() => setStake(amt)}
-                  disabled={hasBet}
+                  disabled={bettingDisabled}
                 >
                   {formatCurrency(amt)}
                 </button>

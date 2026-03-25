@@ -312,7 +312,7 @@ export default function ColorPredictionPage() {
   const isLocked = gameState.status === 'locked';
   const isRevealing = gameState.status === 'revealing';
   const isResult = gameState.status === 'result';
-  const buttonsDisabled = hasBet || !isBettingOpen;
+  const buttonsDisabled = !isBettingOpen;
 
   /* ================================================================ */
   /*  INLINE STYLES (scoped to this component)                         */

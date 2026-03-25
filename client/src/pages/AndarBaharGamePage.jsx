@@ -363,7 +363,7 @@ export default function AndarBaharGamePage() {
           <button
             className={`ab-bet-btn ab-bet-btn--andar ${hasBet && myBetChoice === 'andar' ? 'ab-bet-btn--selected' : ''}`}
             onClick={() => handleBet('andar')}
-            disabled={!isBettingOpen || hasBet}
+            disabled={!isBettingOpen}
           >
             <div className="ab-bet-btn-top">
               <span className="ab-bet-hindi">{'\u0905\u0902\u0926\u0930'}</span>
@@ -385,7 +385,7 @@ export default function AndarBaharGamePage() {
           <button
             className={`ab-bet-btn ab-bet-btn--bahar ${hasBet && myBetChoice === 'bahar' ? 'ab-bet-btn--selected' : ''}`}
             onClick={() => handleBet('bahar')}
-            disabled={!isBettingOpen || hasBet}
+            disabled={!isBettingOpen}
           >
             <div className="ab-bet-btn-top">
               <div className="ab-bet-stack ab-bet-stack--right">

@@ -304,7 +304,7 @@ export default function LoginPage() {
 
               {/* Demo Login */}
               <button style={styles.btnDemo} onClick={handleDemo} disabled={loading}>
-                {loading ? 'Loading...' : 'Quick Play (No Sign Up)'}
+                {loading ? 'Loading...' : 'Demo Login'}
               </button>
               <p style={styles.demoHint}>Get ₹10,000 bonus balance instantly</p>
 

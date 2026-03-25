@@ -32,6 +32,8 @@ export default function CrashGamePage() {
   const [gameState, setGameState] = useState({ status: 'waiting', multiplier: 1.00, history: [], bets: [] });
   const [stake, setStake] = useState(100);
   const [hasBet, setHasBet] = useState(false);
+  const [betCount, setBetCount] = useState(0);
+  const [cashoutCount, setCashoutCount] = useState(0);
   const [cashedOut, setCashedOut] = useState(false);
   const [countdown, setCountdown] = useState(0);
 
@@ -44,6 +46,8 @@ export default function CrashGamePage() {
     socket.on('crash:waiting', ({ countdown }) => {
       setGameState(prev => ({ ...prev, status: 'waiting', multiplier: 1.00, bets: [] }));
       setHasBet(false);
+      setBetCount(0);
+      setCashoutCount(0);
       setCashedOut(false);
       setCountdown(countdown);
     });
@@ -98,6 +102,7 @@ export default function CrashGamePage() {
     socket.emit('crash:place_bet', { amount: stake }, (res) => {
       if (res.error) return toast.error(res.error);
       setHasBet(true);
+      setBetCount(prev => prev + 1);
       toast.success('Bet placed!');
     });
   }, [socket, user, stake]);
@@ -106,10 +111,14 @@ export default function CrashGamePage() {
     if (!socket) return;
     socket.emit('crash:cashout', null, (res) => {
       if (res.error) return toast.error(res.error);
-      setCashedOut(true);
+      setCashoutCount(prev => {
+        const newCount = prev + 1;
+        if (newCount >= betCount) setCashedOut(true);
+        return newCount;
+      });
       toast.success(`Cashed out at ${res.multiplier}x! Won ₹${formatCurrency(res.payout)}`);
     });
-  }, [socket]);
+  }, [socket, betCount]);
 
   const getHistoryClass = (point) => {
     if (point < 2) return 'low';
@@ -139,8 +148,11 @@ export default function CrashGamePage() {
 
           {/* Controls overlay at bottom */}
           <div className="aviator-controls">
-            {gameState.status === 'waiting' && !hasBet && (
+            {gameState.status === 'waiting' && (
               <div className="aviator-bet-panel">
+                {hasBet && (
+                  <div className="aviator-info-msg" style={{ marginBottom: '0.5rem' }}>✈️ {betCount} bet{betCount > 1 ? 's' : ''} placed! You can add more.</div>
+                )}
                 <div className="stake-buttons">
                   {BET_AMOUNTS.map(amt => (
                     <button key={amt} className={`btn btn-sm ${stake === amt ? 'btn-primary' : 'btn-secondary'}`}
@@ -151,9 +163,6 @@ export default function CrashGamePage() {
                   ✈️ BET ₹{formatCurrency(stake)}
                 </button>
               </div>
-            )}
-            {gameState.status === 'waiting' && hasBet && (
-              <div className="aviator-info-msg">✈️ Bet placed! Waiting for takeoff...</div>
             )}
             {gameState.status === 'running' && hasBet && !cashedOut && (
               <button className="aviator-cashout-btn" onClick={cashOut}>

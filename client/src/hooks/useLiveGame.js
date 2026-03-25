@@ -22,6 +22,7 @@ export function useLiveGame(gameId) {
   const [stake, setStake] = useState(100);
   const [hasBet, setHasBet] = useState(false);
   const hasBetRef = useRef(false);
+  const [myBets, setMyBets] = useState([]);
   const [myBetChoice, setMyBetChoice] = useState(null);
   const [roundResult, setRoundResult] = useState(null);
   const [isMyWin, setIsMyWin] = useState(false);
@@ -50,6 +51,7 @@ export function useLiveGame(gameId) {
       }));
       setHasBet(false);
       hasBetRef.current = false;
+      setMyBets([]);
       setSelectedBet(null);
       setMyBetChoice(null);
       setRoundResult(null);
@@ -114,6 +116,7 @@ export function useLiveGame(gameId) {
       if (res?.error) return toast.error(res.error);
       setHasBet(true);
       hasBetRef.current = true;
+      setMyBets(prev => [...prev, { choice, amount: stake }]);
       setSelectedBet(choice);
       setMyBetChoice(choice);
       toast.success(`Bet ${formatCurrency(stake)} on ${choice}`);
@@ -128,6 +131,7 @@ export function useLiveGame(gameId) {
     stake,
     setStake,
     hasBet,
+    myBets,
     myBetChoice,
     placeBet,
     isMyWin,

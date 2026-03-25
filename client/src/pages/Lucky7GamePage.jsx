@@ -263,7 +263,7 @@ export default function Lucky7GamePage() {
   const isBettingOpen = status === 'betting';
   const isResult = status === 'result';
   const isRevealing = status === 'revealing';
-  const buttonsDisabled = hasBet || !isBettingOpen;
+  const buttonsDisabled = !isBettingOpen;
 
   const isLucky7Win = isResult && isMyWin && roundResult?.result === 'lucky7';
   const isRegularWin = isResult && isMyWin && roundResult?.result !== 'lucky7';
